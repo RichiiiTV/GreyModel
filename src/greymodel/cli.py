@@ -65,6 +65,7 @@ def _add_training_arguments(parser: argparse.ArgumentParser, include_checkpoint:
     parser.add_argument("--checkpoint-every-n-steps", type=int, default=0)
     parser.add_argument("--keep-last-k-checkpoints", type=int, default=2)
     parser.add_argument("--resume-from", default=None)
+    parser.add_argument("--no-progress", action="store_true")
     parser.add_argument("--mask-ratio", type=float, default=0.4)
     parser.add_argument("--gradient-clip-norm", type=float, default=1.0)
     parser.add_argument("--focal-gamma", type=float, default=2.0)
@@ -108,6 +109,7 @@ def _training_config_from_args(args: argparse.Namespace) -> TrainingConfig:
         keep_last_k_checkpoints=args.keep_last_k_checkpoints,
         resume_from=args.resume_from,
         station_balanced_sampling=station_balanced_sampling,
+        show_progress=not bool(getattr(args, "no_progress", False)),
     )
 
 

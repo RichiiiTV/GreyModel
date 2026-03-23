@@ -53,6 +53,14 @@ def _require_torch():
     return torch, dist, DDP, DataLoader
 
 
+def _require_tqdm():
+    try:
+        from tqdm.auto import tqdm
+    except ImportError:
+        return None
+    return tqdm
+
+
 def _load_defect_families(index_path: Optional[Path | str]) -> tuple[str, ...]:
     if index_path is None:
         return ()
@@ -201,27 +209,19 @@ def _prepare_run(
     return run_context
 
 
-def _collate_for_training(items, defect_families: Sequence[str], device=None):
+def _collate_for_training(items, defect_families: Sequence[str]):
     torch, _, _, _ = _require_torch()
     from .data import collate_batch
 
     batch = collate_batch(items, as_torch=True)
     model_input = batch["model_input"]
-    if device is not None:
-        model_input = TensorBatch(
-            image=model_input.image.to(device),
-            valid_mask=model_input.valid_mask.to(device),
-            station_id=model_input.station_id.to(device),
-            geometry_id=model_input.geometry_id.to(device),
-            metadata=model_input.metadata,
-        )
     family_index = {name: offset for offset, name in enumerate(defect_families)}
-    defect_targets = torch.zeros((len(items), len(defect_families)), dtype=torch.float32, device=device)
+    defect_targets = torch.zeros((len(items), len(defect_families)), dtype=torch.float32)
     for row_index, sample in enumerate(batch["samples"]):
         for defect_tag in sample.defect_tags:
             if defect_tag in family_index:
                 defect_targets[row_index, family_index[defect_tag]] = 1.0
-    reject_targets = torch.as_tensor(batch["accept_reject"], dtype=torch.float32, device=device)
+    reject_targets = torch.as_tensor(batch["accept_reject"], dtype=torch.float32)
     return {
         "model_input": model_input,
         "reject_targets": reject_targets,
@@ -229,6 +229,38 @@ def _collate_for_training(items, defect_families: Sequence[str], device=None):
         "samples": batch["samples"],
         "records": batch["records"],
     }
+
+
+def _move_training_batch_to_device(batch_payload: Mapping[str, Any], device) -> Mapping[str, Any]:
+    if getattr(device, "type", "cpu") == "cpu":
+        return batch_payload
+    model_input = batch_payload["model_input"]
+    return {
+        **batch_payload,
+        "model_input": TensorBatch(
+            image=model_input.image.to(device, non_blocking=True),
+            valid_mask=model_input.valid_mask.to(device, non_blocking=True),
+            station_id=model_input.station_id.to(device, non_blocking=True),
+            geometry_id=model_input.geometry_id.to(device, non_blocking=True),
+            metadata=model_input.metadata,
+        ),
+        "reject_targets": batch_payload["reject_targets"].to(device, non_blocking=True),
+        "defect_targets": batch_payload["defect_targets"].to(device, non_blocking=True),
+    }
+
+
+def _create_progress_bar(
+    training_config: TrainingConfig,
+    context: DistributedContext,
+    total: int,
+    desc: str,
+):
+    if not training_config.show_progress or not context.is_main_process or total <= 0:
+        return None
+    tqdm = _require_tqdm()
+    if tqdm is None:
+        return None
+    return tqdm(total=int(total), desc=desc, dynamic_ncols=True, leave=True)
 
 
 def _build_runtime_dataloaders(
@@ -277,7 +309,7 @@ def _build_runtime_dataloaders(
         "persistent_workers": bool(training_config.persistent_workers and training_config.num_workers > 0),
         "pin_memory": getattr(context.device, "type", "cpu") == "cuda",
         "batch_size": max(1, int(training_config.per_device_batch_size)),
-        "collate_fn": partial(_collate_for_training, defect_families=defect_families, device=context.device),
+        "collate_fn": partial(_collate_for_training, defect_families=defect_families),
     }
     if training_config.num_workers > 0:
         common_kwargs["prefetch_factor"] = max(2, int(training_config.prefetch_factor))
@@ -512,6 +544,7 @@ def _validation_epoch(
 
     with torch.no_grad():
         for batch_payload in loader:
+            batch_payload = _move_training_batch_to_device(batch_payload, context.device)
             model_input = _normalize_model_input(batch_payload["model_input"], _unwrap_module(backbone).config.num_stations)
             with build_autocast_context(training_config, context.device):
                 if stage == "pretrain":
@@ -634,101 +667,142 @@ def _run_training_loop(
             epoch_counts: Dict[str, float] = {}
             optimizer_steps_this_epoch = 0
             effective_micro_steps = min(len(train_loader), training_config.steps_per_epoch or len(train_loader))
+            progress_bar = _create_progress_bar(
+                training_config,
+                distributed_context,
+                total=effective_micro_steps,
+                desc="%s epoch %d/%d" % (stage, epoch + 1, training_config.epochs),
+            )
+            try:
+                for micro_step_index, batch_payload in enumerate(train_loader, start=1):
+                    if micro_step_index > effective_micro_steps:
+                        break
+                    batch_payload = _move_training_batch_to_device(batch_payload, distributed_context.device)
+                    model_input = _normalize_model_input(batch_payload["model_input"], _unwrap_module(backbone).config.num_stations)
+                    with build_autocast_context(training_config, distributed_context.device):
+                        if stage == "pretrain":
+                            loss, metrics, _ = compute_masked_pretrain_objective(
+                                backbone,
+                                auxiliary_modules["reconstruction_head"],
+                                model_input,
+                                training_config,
+                            )
+                        elif stage == "domain_adapt":
+                            loss, metrics, _ = compute_domain_adaptation_objective(backbone, model_input, training_config)
+                        else:
+                            loss, metrics, _ = compute_supervised_objective(
+                                backbone,
+                                TrainingBatch(
+                                    model_input=model_input,
+                                    reject_targets=batch_payload["reject_targets"],
+                                    defect_targets=batch_payload["defect_targets"],
+                                ),
+                                training_config,
+                            )
+                        scaled_loss = loss / float(resolved_grad_accum_steps)
 
-            for micro_step_index, batch_payload in enumerate(train_loader, start=1):
-                if micro_step_index > effective_micro_steps:
-                    break
-                model_input = _normalize_model_input(batch_payload["model_input"], _unwrap_module(backbone).config.num_stations)
-                with build_autocast_context(training_config, distributed_context.device):
-                    if stage == "pretrain":
-                        loss, metrics, _ = compute_masked_pretrain_objective(
-                            backbone,
-                            auxiliary_modules["reconstruction_head"],
-                            model_input,
-                            training_config,
-                        )
-                    elif stage == "domain_adapt":
-                        loss, metrics, _ = compute_domain_adaptation_objective(backbone, model_input, training_config)
+                    if scaler.is_enabled():
+                        scaler.scale(scaled_loss).backward()
                     else:
-                        loss, metrics, _ = compute_supervised_objective(
-                            backbone,
-                            TrainingBatch(
-                                model_input=model_input,
-                                reject_targets=batch_payload["reject_targets"],
-                                defect_targets=batch_payload["defect_targets"],
-                            ),
-                            training_config,
+                        scaled_loss.backward()
+
+                    batch_samples = _samples_in_batch(batch_payload)
+                    total_samples_seen += batch_samples * distributed_context.world_size
+                    micro_loss_total += _metric_value(loss) * batch_samples
+                    micro_sample_total += batch_samples
+                    micro_batches_since_step += 1
+                    epoch_totals["loss"] = epoch_totals.get("loss", 0.0) + _metric_value(loss) * batch_samples
+                    epoch_counts["loss"] = epoch_counts.get("loss", 0.0) + batch_samples
+                    for key, value in metrics.items():
+                        metric_value = _metric_value(value)
+                        micro_metrics_total[key] = micro_metrics_total.get(key, 0.0) + metric_value * batch_samples
+                        epoch_totals[key] = epoch_totals.get(key, 0.0) + metric_value * batch_samples
+                        epoch_counts[key] = epoch_counts.get(key, 0.0) + batch_samples
+
+                    should_step = micro_batches_since_step >= resolved_grad_accum_steps or micro_step_index == effective_micro_steps
+                    if not should_step:
+                        if progress_bar is not None:
+                            progress_bar.update(1)
+                        continue
+
+                    import torch
+
+                    if scaler.is_enabled():
+                        scaler.unscale_(optimizer)
+                    parameters = list(backbone.parameters())
+                    for module in auxiliary_modules.values():
+                        parameters.extend(list(module.parameters()))
+                    torch.nn.utils.clip_grad_norm_(parameters, training_config.gradient_clip_norm)
+                    if scaler.is_enabled():
+                        scaler.step(optimizer)
+                        scaler.update()
+                    else:
+                        optimizer.step()
+                    optimizer.zero_grad(set_to_none=True)
+                    scheduler.step()
+                    global_step += 1
+                    optimizer_steps_this_epoch += 1
+
+                    train_metrics = {}
+                    loss_total, sample_total = _reduce_totals(micro_loss_total, micro_sample_total, distributed_context)
+                    train_metrics["loss"] = loss_total / max(sample_total, 1.0)
+                    for key, total in micro_metrics_total.items():
+                        total_value, count_value = _reduce_totals(total, micro_sample_total, distributed_context)
+                        train_metrics[key] = total_value / max(count_value, 1.0)
+                    train_metrics.update(
+                        {
+                            "learning_rate": float(optimizer.param_groups[0]["lr"]),
+                            "epoch": epoch + 1,
+                            "global_step": global_step,
+                            "samples_per_second": float(total_samples_seen) / max(time.perf_counter() - stage_start_time, 1e-6),
+                            "effective_global_batch_size": training_config.effective_global_batch_size(distributed_context.world_size),
+                        }
+                    )
+                    if distributed_context.is_main_process and (
+                        global_step == 1 or global_step % max(training_config.log_every_n_steps, 1) == 0
+                    ):
+                        log_step_metrics(run_context, train_metrics)
+
+                    if progress_bar is not None:
+                        progress_bar.update(micro_batches_since_step)
+                        progress_bar.set_postfix(
+                            loss="%.4f" % float(train_metrics["loss"]),
+                            lr="%.2e" % float(train_metrics["learning_rate"]),
+                            step=int(global_step),
                         )
-                    scaled_loss = loss / float(resolved_grad_accum_steps)
 
-                if scaler.is_enabled():
-                    scaler.scale(scaled_loss).backward()
-                else:
-                    scaled_loss.backward()
+                    if val_loader is not None and training_config.val_every_n_steps > 0 and global_step % training_config.val_every_n_steps == 0:
+                        val_metrics = _validation_epoch(stage, backbone, auxiliary_modules, val_loader, training_config, distributed_context)
+                        if distributed_context.is_main_process and val_metrics:
+                            log_step_metrics(run_context, {"epoch": epoch + 1, "global_step": global_step, **val_metrics, "event": "validation"})
+                        candidate_metric = val_metrics.get("val_loss")
+                        if candidate_metric is not None and (best_val_metric is None or candidate_metric < best_val_metric):
+                            best_val_metric = float(candidate_metric)
+                            best_checkpoint_path = _save_checkpoint(
+                                run_context,
+                                distributed_context,
+                                _checkpoint_payload(
+                                    stage,
+                                    variant,
+                                    manifest_path,
+                                    index_path,
+                                    training_config,
+                                    defect_families,
+                                    epoch + 1,
+                                    global_step,
+                                    best_val_metric,
+                                    backbone,
+                                    auxiliary_modules,
+                                    optimizer,
+                                    scheduler,
+                                    scaler,
+                                ),
+                                "best.pt",
+                                best=True,
+                            )
 
-                batch_samples = _samples_in_batch(batch_payload)
-                total_samples_seen += batch_samples * distributed_context.world_size
-                micro_loss_total += _metric_value(loss) * batch_samples
-                micro_sample_total += batch_samples
-                micro_batches_since_step += 1
-                epoch_totals["loss"] = epoch_totals.get("loss", 0.0) + _metric_value(loss) * batch_samples
-                epoch_counts["loss"] = epoch_counts.get("loss", 0.0) + batch_samples
-                for key, value in metrics.items():
-                    metric_value = _metric_value(value)
-                    micro_metrics_total[key] = micro_metrics_total.get(key, 0.0) + metric_value * batch_samples
-                    epoch_totals[key] = epoch_totals.get(key, 0.0) + metric_value * batch_samples
-                    epoch_counts[key] = epoch_counts.get(key, 0.0) + batch_samples
-
-                should_step = micro_batches_since_step >= resolved_grad_accum_steps or micro_step_index == effective_micro_steps
-                if not should_step:
-                    continue
-
-                import torch
-
-                if scaler.is_enabled():
-                    scaler.unscale_(optimizer)
-                parameters = list(backbone.parameters())
-                for module in auxiliary_modules.values():
-                    parameters.extend(list(module.parameters()))
-                torch.nn.utils.clip_grad_norm_(parameters, training_config.gradient_clip_norm)
-                if scaler.is_enabled():
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    optimizer.step()
-                optimizer.zero_grad(set_to_none=True)
-                scheduler.step()
-                global_step += 1
-                optimizer_steps_this_epoch += 1
-
-                train_metrics = {}
-                loss_total, sample_total = _reduce_totals(micro_loss_total, micro_sample_total, distributed_context)
-                train_metrics["loss"] = loss_total / max(sample_total, 1.0)
-                for key, total in micro_metrics_total.items():
-                    total_value, count_value = _reduce_totals(total, micro_sample_total, distributed_context)
-                    train_metrics[key] = total_value / max(count_value, 1.0)
-                train_metrics.update(
-                    {
-                        "learning_rate": float(optimizer.param_groups[0]["lr"]),
-                        "epoch": epoch + 1,
-                        "global_step": global_step,
-                        "samples_per_second": float(total_samples_seen) / max(time.perf_counter() - stage_start_time, 1e-6),
-                        "effective_global_batch_size": training_config.effective_global_batch_size(distributed_context.world_size),
-                    }
-                )
-                if distributed_context.is_main_process and (
-                    global_step == 1 or global_step % max(training_config.log_every_n_steps, 1) == 0
-                ):
-                    log_step_metrics(run_context, train_metrics)
-
-                if val_loader is not None and training_config.val_every_n_steps > 0 and global_step % training_config.val_every_n_steps == 0:
-                    val_metrics = _validation_epoch(stage, backbone, auxiliary_modules, val_loader, training_config, distributed_context)
-                    if distributed_context.is_main_process and val_metrics:
-                        log_step_metrics(run_context, {"epoch": epoch + 1, "global_step": global_step, **val_metrics, "event": "validation"})
-                    candidate_metric = val_metrics.get("val_loss")
-                    if candidate_metric is not None and (best_val_metric is None or candidate_metric < best_val_metric):
-                        best_val_metric = float(candidate_metric)
-                        best_checkpoint_path = _save_checkpoint(
+                    if training_config.checkpoint_every_n_steps > 0 and global_step % training_config.checkpoint_every_n_steps == 0:
+                        latest_checkpoint_path = _save_checkpoint(
                             run_context,
                             distributed_context,
                             _checkpoint_payload(
@@ -747,39 +821,20 @@ def _run_training_loop(
                                 scheduler,
                                 scaler,
                             ),
-                            "best.pt",
-                            best=True,
+                            "%s-step-%06d.pt" % (stage, global_step),
+                            periodic_prefix="%s-step" % stage,
+                            keep_last_k=training_config.keep_last_k_checkpoints,
                         )
 
-                if training_config.checkpoint_every_n_steps > 0 and global_step % training_config.checkpoint_every_n_steps == 0:
-                    latest_checkpoint_path = _save_checkpoint(
-                        run_context,
-                        distributed_context,
-                        _checkpoint_payload(
-                            stage,
-                            variant,
-                            manifest_path,
-                            index_path,
-                            training_config,
-                            defect_families,
-                            epoch + 1,
-                            global_step,
-                            best_val_metric,
-                            backbone,
-                            auxiliary_modules,
-                            optimizer,
-                            scheduler,
-                            scaler,
-                        ),
-                        "%s-step-%06d.pt" % (stage, global_step),
-                        periodic_prefix="%s-step" % stage,
-                        keep_last_k=training_config.keep_last_k_checkpoints,
-                    )
-
-                micro_loss_total = 0.0
-                micro_metrics_total = {}
-                micro_sample_total = 0
-                micro_batches_since_step = 0
+                    micro_loss_total = 0.0
+                    micro_metrics_total = {}
+                    micro_sample_total = 0
+                    micro_batches_since_step = 0
+                if progress_bar is not None and progress_bar.n < effective_micro_steps:
+                    progress_bar.update(effective_micro_steps - progress_bar.n)
+            finally:
+                if progress_bar is not None:
+                    progress_bar.close()
 
             val_metrics = _validation_epoch(stage, backbone, auxiliary_modules, val_loader, training_config, distributed_context)
             reduced_epoch_metrics = {}

@@ -39,6 +39,7 @@ This repo is organized around finetuning and inspection workflow, not only model
 - Production pretraining is launched with `torchrun` and native PyTorch DDP on a multi-GPU node.
 - Smoke runs are still useful for quick wiring checks, but they are not the same as a real epoch-based training job.
 - Public Hugging Face datasets can be materialized into the same manifest format with `greymodel dataset build-hf`.
+- Training commands show `tqdm` progress bars by default; use `--no-progress` for quiet runs.
 
 ## Runtime Expectations
 
@@ -75,4 +76,20 @@ torchrun --nproc_per_node=4 -m greymodel train pretrain --manifest data/public_p
 ```bash
 greymodel dataset build /path/to/production_images --output-dir data/production
 torchrun --nproc_per_node=4 -m greymodel train finetune --manifest data/production/manifest.jsonl --index data/production/dataset_index.json --checkpoint artifacts/pretrain-base/checkpoints/best.pt --run-root artifacts
+```
+
+## Saved 8xA100 Entry Points
+
+For a larger public pretraining run, the repo includes executable entrypoint files that import the full `DefectSpectrum/Defect_Spectrum` dataset, convert it to `8-bit` grayscale, validate it, and launch pretraining:
+
+- Linux: [pretrain_8xa100_defect_spectrum.sh](/c:/Users/Ricardo/Desktop/GreyModel/scripts/pretrain_8xa100_defect_spectrum.sh)
+- PowerShell: [pretrain_8xa100_defect_spectrum.ps1](/c:/Users/Ricardo/Desktop/GreyModel/scripts/pretrain_8xa100_defect_spectrum.ps1)
+
+Examples:
+```bash
+bash scripts/pretrain_8xa100_defect_spectrum.sh
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\pretrain_8xa100_defect_spectrum.ps1
 ```

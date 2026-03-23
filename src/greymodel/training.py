@@ -51,6 +51,7 @@ class TrainingConfig:
     keep_last_k_checkpoints: int = 2
     resume_from: Optional[str] = None
     station_balanced_sampling: bool = True
+    show_progress: bool = True
 
     def resolved_grad_accum_steps(self, world_size: int) -> int:
         base = max(1, self.per_device_batch_size * max(world_size, 1))

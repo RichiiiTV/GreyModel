@@ -20,6 +20,7 @@ from greymodel import (
     run_resume_stage,
 )
 from greymodel.data import save_dataset_manifest
+from greymodel.runners import DistributedContext, _collate_for_training, _create_progress_bar, _move_training_batch_to_device
 
 
 def _write_sample(root: Path, relative_path: str, image: np.ndarray, sidecar: dict | None = None) -> Path:
@@ -106,6 +107,53 @@ def test_station_balanced_sampler_shards_cleanly_across_replicas(tmp_path: Path)
 
     assert set(rank0) | set(rank1) == set(range(len(records)))
     assert set(rank0).isdisjoint(set(rank1)) or len(records) % 2 != 0
+
+
+def test_training_collate_stays_on_cpu_until_explicit_device_move(tmp_path: Path) -> None:
+    manifest = _build_training_manifest(tmp_path)
+    dataset = ManifestInspectionDataset(manifest, split="train")
+    batch_payload = _collate_for_training([dataset[0], dataset[1]], defect_families=("particle", "scratch"))
+
+    assert batch_payload["model_input"].image.device.type == "cpu"
+    assert batch_payload["reject_targets"].device.type == "cpu"
+    assert batch_payload["defect_targets"].device.type == "cpu"
+
+    moved_payload = _move_training_batch_to_device(batch_payload, torch.device("cpu"))
+
+    assert moved_payload["model_input"].image.device.type == "cpu"
+    assert moved_payload["reject_targets"].device.type == "cpu"
+    assert moved_payload["defect_targets"].device.type == "cpu"
+
+
+def test_progress_bar_is_optional_and_rank_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    created = {}
+
+    class _FakeProgress:
+        def __init__(self, **kwargs):
+            created.update(kwargs)
+
+        def close(self) -> None:
+            created["closed"] = True
+
+    monkeypatch.setattr("greymodel.runners._require_tqdm", lambda: lambda **kwargs: _FakeProgress(**kwargs))
+
+    progress = _create_progress_bar(
+        TrainingConfig(show_progress=True),
+        DistributedContext(enabled=False, rank=0, world_size=1, local_rank=0, device=torch.device("cpu"), backend="gloo"),
+        total=5,
+        desc="pretrain epoch 1/1",
+    )
+    assert progress is not None
+    assert created["total"] == 5
+    assert created["desc"] == "pretrain epoch 1/1"
+
+    disabled = _create_progress_bar(
+        TrainingConfig(show_progress=False),
+        DistributedContext(enabled=False, rank=0, world_size=1, local_rank=0, device=torch.device("cpu"), backend="gloo"),
+        total=5,
+        desc="hidden",
+    )
+    assert disabled is None
 
 
 def test_pretraining_stage_writes_checkpoint_and_metrics(tmp_path: Path) -> None:
