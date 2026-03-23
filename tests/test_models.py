@@ -5,6 +5,7 @@ import torch
 
 from greymodel import LiteModel, ModelInput, StationConfig, BaseModel
 from greymodel.models import build_base_model
+from greymodel.models.grayinspect import RelativePositionBias2D
 from greymodel.training import TrainingConfig, compute_masked_pretrain_objective
 from greymodel.types import TensorBatch
 
@@ -84,3 +85,10 @@ def test_masked_pretrain_objective_skips_local_tile_branch(monkeypatch) -> None:
     assert loss.ndim == 0
     assert "masked_reconstruction_loss" in metrics
     assert extras["output"].global_feature_map is not None
+
+
+def test_relative_position_bias_resizes_beyond_configured_capacity() -> None:
+    module = RelativePositionBias2D(num_heads=4, max_height=64, max_width=64)
+    bias = module(height=80, width=2, device=torch.device("cpu"))
+
+    assert bias.shape == (4, 160, 160)

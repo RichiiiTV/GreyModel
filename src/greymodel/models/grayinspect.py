@@ -50,15 +50,27 @@ class RelativePositionBias2D(nn.Module):
         nn.init.trunc_normal_(self.height_bias, std=0.02)
         nn.init.trunc_normal_(self.width_bias, std=0.02)
 
+    def _resized_bias(self, bias_table: torch.Tensor, target_size: int) -> torch.Tensor:
+        target_span = 2 * int(target_size) - 1
+        if bias_table.shape[0] == target_span:
+            return bias_table
+        resized = F.interpolate(
+            bias_table.transpose(0, 1).unsqueeze(0),
+            size=target_span,
+            mode="linear",
+            align_corners=True,
+        )
+        return resized.squeeze(0).transpose(0, 1)
+
     def forward(self, height: int, width: int, device) -> torch.Tensor:
-        if height > self.max_height or width > self.max_width:
-            raise ValueError("Global token grid exceeds configured relative-position capacity.")
+        height_bias = self._resized_bias(self.height_bias, height)
+        width_bias = self._resized_bias(self.width_bias, width)
         coords_h = torch.arange(height, device=device)
         coords_w = torch.arange(width, device=device)
-        rel_h = coords_h[:, None] - coords_h[None, :] + self.max_height - 1
-        rel_w = coords_w[:, None] - coords_w[None, :] + self.max_width - 1
-        bh = self.height_bias.index_select(0, rel_h.reshape(-1)).view(height, height, self.num_heads)
-        bw = self.width_bias.index_select(0, rel_w.reshape(-1)).view(width, width, self.num_heads)
+        rel_h = coords_h[:, None] - coords_h[None, :] + height - 1
+        rel_w = coords_w[:, None] - coords_w[None, :] + width - 1
+        bh = height_bias.index_select(0, rel_h.reshape(-1)).view(height, height, self.num_heads)
+        bw = width_bias.index_select(0, rel_w.reshape(-1)).view(width, width, self.num_heads)
         bias = bh[:, None, :, None, :] + bw[None, :, None, :, :]
         return bias.permute(4, 0, 1, 2, 3).reshape(self.num_heads, height * width, height * width)
 
