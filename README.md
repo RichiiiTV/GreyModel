@@ -97,12 +97,12 @@ sbatch scripts/pretrain_8xa100_defect_spectrum.slurm
 
 Cluster-specific `sbatch --wrap` example for a scheduler that uses `-q 3h`:
 ```bash
-sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && bash scripts/pretrain_8xa100_defect_spectrum.sh"
+sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && source .venv/bin/activate && python -m greymodel dataset build-hf --dataset-name DefectSpectrum/Defect_Spectrum --output-dir data/public_pretrain/defect_spectrum_full --source-dataset DefectSpectrum/Defect_Spectrum:full --allow-rgb-conversion && python -m greymodel dataset validate data/public_pretrain/defect_spectrum_full/manifest.jsonl && torchrun --standalone --nproc_per_node=8 -m greymodel train pretrain --manifest data/public_pretrain/defect_spectrum_full/manifest.jsonl --index data/public_pretrain/defect_spectrum_full/dataset_index.json --variant base --run-root artifacts --epochs 200 --batch-size 16 --global-batch-size 128 --num-workers 8 --precision auto --log-every-n-steps 10 --checkpoint-every-n-steps 200 --keep-last-k-checkpoints 5"
 ```
 
 If your environment is not already active on the compute node:
 ```bash
-sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && source .venv/bin/activate && bash scripts/pretrain_8xa100_defect_spectrum.sh"
+sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && <your-env-activation> && python -m greymodel dataset build-hf --dataset-name DefectSpectrum/Defect_Spectrum --output-dir data/public_pretrain/defect_spectrum_full --source-dataset DefectSpectrum/Defect_Spectrum:full --allow-rgb-conversion && python -m greymodel dataset validate data/public_pretrain/defect_spectrum_full/manifest.jsonl && torchrun --standalone --nproc_per_node=8 -m greymodel train pretrain --manifest data/public_pretrain/defect_spectrum_full/manifest.jsonl --index data/public_pretrain/defect_spectrum_full/dataset_index.json --variant base --run-root artifacts --epochs 200 --batch-size 16 --global-batch-size 128 --num-workers 8 --precision auto --log-every-n-steps 10 --checkpoint-every-n-steps 200 --keep-last-k-checkpoints 5"
 ```
 
 ```powershell
