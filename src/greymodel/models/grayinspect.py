@@ -208,6 +208,15 @@ class GrayInspectH(nn.Module):
         self.defect_head = nn.Linear(config.fusion_dim, config.num_defect_families)
         self.global_heatmap_head = nn.Conv2d(config.global_hidden_dim, 1, kernel_size=1)
 
+    def _bound_global_token_grid(self, global_features, global_mask):
+        target_h = min(int(global_features.shape[-2]), int(self.config.max_relative_height))
+        target_w = min(int(global_features.shape[-1]), int(self.config.max_relative_width))
+        if (target_h, target_w) == tuple(global_features.shape[-2:]):
+            return global_features, global_mask
+        bounded_features = F.adaptive_avg_pool2d(global_features, output_size=(target_h, target_w))
+        bounded_mask = F.adaptive_max_pool2d(global_mask, output_size=(target_h, target_w))
+        return bounded_features, bounded_mask
+
     def _extract_tiles(self, image, valid_mask):
         height, width = image.shape[-2:]
         grid = build_tile_grid((height, width), self.config.tile_size, self.config.tile_stride)
@@ -260,6 +269,7 @@ class GrayInspectH(nn.Module):
         global_features = self.global_downsample(stem)
         global_features = self.global_affine(global_features, conditioning)
         global_mask = F.interpolate(valid_mask, size=global_features.shape[-2:], mode="nearest")
+        global_features, global_mask = self._bound_global_token_grid(global_features, global_mask)
         tokens = global_features.flatten(2).transpose(1, 2)
         token_mask = global_mask.flatten(2).squeeze(1) > 0.5
         for block in self.transformer:

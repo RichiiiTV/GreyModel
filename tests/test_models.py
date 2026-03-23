@@ -92,3 +92,19 @@ def test_relative_position_bias_resizes_beyond_configured_capacity() -> None:
     bias = module(height=80, width=2, device=torch.device("cpu"))
 
     assert bias.shape == (4, 160, 160)
+
+
+def test_global_only_forward_bounds_oversized_token_grids() -> None:
+    model = build_base_model(num_defect_families=2)
+    batch = TensorBatch(
+        image=torch.zeros((1, 1, 1056, 32), dtype=torch.float32),
+        valid_mask=torch.ones((1, 1, 1056, 32), dtype=torch.float32),
+        station_id=torch.zeros((1,), dtype=torch.long),
+        geometry_id=torch.zeros((1,), dtype=torch.long),
+        metadata={},
+    )
+
+    output = model(batch, return_mode="global_only")
+
+    assert output.global_feature_map.shape[-2] <= model.config.max_relative_height
+    assert output.global_feature_map.shape[-1] <= model.config.max_relative_width
