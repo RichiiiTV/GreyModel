@@ -83,11 +83,26 @@ torchrun --nproc_per_node=4 -m greymodel train finetune --manifest data/producti
 For a larger public pretraining run, the repo includes executable entrypoint files that import the full `DefectSpectrum/Defect_Spectrum` dataset, convert it to `8-bit` grayscale, validate it, and launch pretraining:
 
 - Linux: [pretrain_8xa100_defect_spectrum.sh](/c:/Users/Ricardo/Desktop/GreyModel/scripts/pretrain_8xa100_defect_spectrum.sh)
+- Slurm: [pretrain_8xa100_defect_spectrum.slurm](/c:/Users/Ricardo/Desktop/GreyModel/scripts/pretrain_8xa100_defect_spectrum.slurm)
 - PowerShell: [pretrain_8xa100_defect_spectrum.ps1](/c:/Users/Ricardo/Desktop/GreyModel/scripts/pretrain_8xa100_defect_spectrum.ps1)
 
 Examples:
 ```bash
 bash scripts/pretrain_8xa100_defect_spectrum.sh
+```
+
+```bash
+sbatch scripts/pretrain_8xa100_defect_spectrum.slurm
+```
+
+Cluster-specific `sbatch --wrap` example for a scheduler that uses `-q 3h`:
+```bash
+sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && bash scripts/pretrain_8xa100_defect_spectrum.sh"
+```
+
+If your environment is not already active on the compute node:
+```bash
+sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && source .venv/bin/activate && bash scripts/pretrain_8xa100_defect_spectrum.sh"
 ```
 
 ```powershell

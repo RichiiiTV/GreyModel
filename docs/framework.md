@@ -73,6 +73,14 @@ Pretraining should be launched with `torchrun` so the same code path can scale a
 - Track `epoch`, `global_step`, and optimizer/scheduler/scaler state in checkpoints.
 - Keep the run directory deterministic so a job can be resumed or audited later.
 
+On clusters, it is valid to wrap the saved entrypoint script in the scheduler command rather than inlining the full training command. For example, on a system that uses:
+
+```bash
+sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && bash scripts/pretrain_8xa100_defect_spectrum.sh"
+```
+
+the saved script remains the canonical place for dataset import and pretraining defaults, while the scheduler command controls resources and queue policy.
+
 ### Pretrain
 
 Use large unlabeled grayscale imagery and masked-image pretraining to learn generic line and part structure.
