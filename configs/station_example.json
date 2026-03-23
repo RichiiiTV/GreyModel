@@ -1,0 +1,17 @@
+{
+  "station_id": "station-01",
+  "geometry_mode": "rect",
+  "canvas_shape": [256, 704],
+  "pad_value": 0,
+  "normalization_mean": 127.5,
+  "normalization_std": 50.0,
+  "tile_size": 32,
+  "tile_stride": 16,
+  "adapter_id": "rect-line-a",
+  "reject_threshold": 0.5,
+  "defect_thresholds": {
+    "particle": 0.55,
+    "scratch": 0.5,
+    "streak": 0.6
+  }
+}

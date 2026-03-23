@@ -1,0 +1,11 @@
+{
+  "name": "GrayInspect-H-Lite",
+  "tile_size": [64, 64],
+  "tile_stride": [48, 48],
+  "global_depth": 2,
+  "global_heads": 4,
+  "global_hidden_dim": 128,
+  "local_embedding_dim": 128,
+  "fusion_dim": 128,
+  "top_k_tiles": 5
+}

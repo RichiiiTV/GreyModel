@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "greymodel"
+version = "0.1.0"
+description = "Grayscale syringe and vial defect inspection with station-conditioned hybrid models."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "Proprietary" }
+authors = [
+  { name = "GreyModel" }
+]
+dependencies = [
+  "numpy>=1.21,<3"
+]
+
+[project.optional-dependencies]
+train = [
+  "torch>=2.0",
+  "pytest>=7.0"
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
