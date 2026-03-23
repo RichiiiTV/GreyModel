@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
+import random
 from typing import Dict, Iterable, Mapping, Optional
 
 from .losses import combined_supervised_loss, masked_reconstruction_loss, tile_image_consistency_loss
@@ -29,6 +31,53 @@ class TrainingConfig:
     focal_gamma: float = 2.0
     mask_ratio: float = 0.4
     gradient_clip_norm: float = 1.0
+    epochs: int = 1
+    steps_per_epoch: Optional[int] = None
+    learning_rate: float = 1e-3
+    weight_decay: float = 1e-4
+    warmup_steps: int = 0
+    num_workers: int = 0
+    prefetch_factor: int = 2
+    persistent_workers: bool = False
+    global_batch_size: Optional[int] = None
+    per_device_batch_size: int = 4
+    grad_accum_steps: int = 1
+    precision: str = "auto"
+    distributed_backend: str = "auto"
+    seed: int = 17
+    log_every_n_steps: int = 10
+    val_every_n_steps: int = 0
+    checkpoint_every_n_steps: int = 0
+    keep_last_k_checkpoints: int = 2
+    resume_from: Optional[str] = None
+    station_balanced_sampling: bool = True
+
+    def resolved_grad_accum_steps(self, world_size: int) -> int:
+        base = max(1, self.per_device_batch_size * max(world_size, 1))
+        if self.global_batch_size is None:
+            return max(1, self.grad_accum_steps)
+        if self.global_batch_size < base:
+            raise ValueError("global_batch_size must be at least per_device_batch_size * world_size.")
+        if self.global_batch_size % base != 0:
+            raise ValueError("global_batch_size must be divisible by per_device_batch_size * world_size.")
+        return max(1, int(self.global_batch_size // base))
+
+    def effective_global_batch_size(self, world_size: int) -> int:
+        return int(self.per_device_batch_size * max(world_size, 1) * self.resolved_grad_accum_steps(world_size))
+
+
+def seed_everything(seed: int) -> None:
+    torch = _require_torch()
+    random.seed(seed)
+    try:
+        import numpy as np
+
+        np.random.seed(seed)
+    except Exception:
+        pass
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def station_balanced_index_order(station_ids: Iterable[int]):
@@ -68,10 +117,51 @@ def build_patch_mask(images, valid_mask, patch_size: int = 16, mask_ratio: float
     return patch_mask
 
 
-def run_supervised_step(model, optimizer, batch: TrainingBatch, config: TrainingConfig):
+def resolve_precision(training_config: TrainingConfig, device) -> str:
+    precision = training_config.precision.lower()
+    if precision == "auto":
+        if getattr(device, "type", "cpu") == "cuda":
+            import torch
+
+            if torch.cuda.is_bf16_supported():
+                return "bf16"
+            return "fp16"
+        return "fp32"
+    return precision
+
+
+def build_autocast_context(training_config: TrainingConfig, device):
     torch = _require_torch()
-    model.train()
-    optimizer.zero_grad()
+    precision = resolve_precision(training_config, device)
+    if getattr(device, "type", "cpu") != "cuda" or precision == "fp32":
+        return nullcontext()
+    dtype = torch.bfloat16 if precision == "bf16" else torch.float16
+    return torch.autocast(device_type="cuda", dtype=dtype)
+
+
+def build_grad_scaler(training_config: TrainingConfig, device):
+    torch = _require_torch()
+    precision = resolve_precision(training_config, device)
+    enabled = getattr(device, "type", "cpu") == "cuda" and precision == "fp16"
+    if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
+        return torch.amp.GradScaler("cuda", enabled=enabled)
+    return torch.cuda.amp.GradScaler(enabled=enabled)
+
+
+def build_scheduler(optimizer, total_steps: int, warmup_steps: int = 0):
+    torch = _require_torch()
+    total_steps = max(int(total_steps), 1)
+    warmup_steps = max(int(warmup_steps), 0)
+
+    def _lr_lambda(step: int) -> float:
+        if warmup_steps > 0 and step < warmup_steps:
+            return float(step + 1) / float(max(warmup_steps, 1))
+        return 1.0
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=_lr_lambda)
+
+
+def compute_supervised_objective(model, batch: TrainingBatch, config: TrainingConfig):
     output = model(batch.model_input)
     loss_dict = combined_supervised_loss(
         output,
@@ -82,18 +172,11 @@ def run_supervised_step(model, optimizer, batch: TrainingBatch, config: Training
         reject_positive_weight=config.reject_positive_weight,
         focal_gamma=config.focal_gamma,
     )
-    loss = loss_dict["loss"]
-    loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradient_clip_norm)
-    optimizer.step()
-    return {key: value.item() if hasattr(value, "item") else value for key, value in loss_dict.items()}
+    return loss_dict["loss"], {key: value.detach() for key, value in loss_dict.items() if key != "loss"}, output
 
 
-def run_masked_pretrain_step(model, reconstruction_head, optimizer, model_input, config: TrainingConfig):
+def compute_masked_pretrain_objective(model, reconstruction_head, model_input, config: TrainingConfig):
     torch = _require_torch()
-    model.train()
-    reconstruction_head.train()
-    optimizer.zero_grad()
     patch_mask = build_patch_mask(
         model_input.image,
         model_input.valid_mask,
@@ -117,19 +200,51 @@ def run_masked_pretrain_step(model, reconstruction_head, optimizer, model_input,
             align_corners=False,
         )
     loss = masked_reconstruction_loss(reconstruction, model_input.image, patch_mask)
+    metrics = {
+        "masked_reconstruction_loss": loss.detach(),
+        "masked_fraction": patch_mask.mean().detach(),
+    }
+    return loss, metrics, {"patch_mask": patch_mask, "reconstruction": reconstruction, "output": output}
+
+
+def compute_domain_adaptation_objective(model, model_input, config: TrainingConfig):
+    output = model(model_input)
+    loss = tile_image_consistency_loss(output.local_heatmap, output.global_heatmap, model_input.valid_mask)
+    return loss, {"domain_consistency_loss": loss.detach()}, output
+
+
+def run_supervised_step(model, optimizer, batch: TrainingBatch, config: TrainingConfig):
+    torch = _require_torch()
+    model.train()
+    optimizer.zero_grad()
+    loss, metrics, _ = compute_supervised_objective(model, batch, config)
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradient_clip_norm)
+    optimizer.step()
+    payload = {"loss": loss.detach(), **metrics}
+    return {key: value.item() if hasattr(value, "item") else value for key, value in payload.items()}
+
+
+def run_masked_pretrain_step(model, reconstruction_head, optimizer, model_input, config: TrainingConfig):
+    torch = _require_torch()
+    model.train()
+    reconstruction_head.train()
+    optimizer.zero_grad()
+    loss, metrics, _ = compute_masked_pretrain_objective(model, reconstruction_head, model_input, config)
     loss.backward()
     torch.nn.utils.clip_grad_norm_(list(model.parameters()) + list(reconstruction_head.parameters()), config.gradient_clip_norm)
     optimizer.step()
-    return {"masked_reconstruction_loss": float(loss.detach().item())}
+    payload = {"loss": loss.detach(), **metrics}
+    return {key: value.item() if hasattr(value, "item") else value for key, value in payload.items()}
 
 
 def run_domain_adaptation_step(model, optimizer, model_input, config: TrainingConfig):
     torch = _require_torch()
     model.train()
     optimizer.zero_grad()
-    output = model(model_input)
-    loss = tile_image_consistency_loss(output.local_heatmap, output.global_heatmap, model_input.valid_mask)
+    loss, metrics, _ = compute_domain_adaptation_objective(model, model_input, config)
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradient_clip_norm)
     optimizer.step()
-    return {"domain_consistency_loss": float(loss.detach().item())}
+    payload = {"loss": loss.detach(), **metrics}
+    return {key: value.item() if hasattr(value, "item") else value for key, value in payload.items()}

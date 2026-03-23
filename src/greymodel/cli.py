@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
@@ -8,6 +9,7 @@ from .api import BaseModel, LiteModel
 from .data import (
     build_dataset_manifest,
     build_dataset_splits,
+    build_huggingface_dataset_manifest,
     build_hard_negative_subset,
     load_dataset_index,
     load_dataset_manifest,
@@ -27,6 +29,7 @@ from .runners import (
     run_pretraining_stage,
     run_resume_stage,
 )
+from .training import TrainingConfig
 from .types import ModelInput
 from .utils import ensure_dir, load_uint8_grayscale, write_json
 
@@ -35,6 +38,77 @@ def _variant_model(variant: str, num_defect_families: int):
     if variant == "lite":
         return LiteModel(num_defect_families=num_defect_families)
     return BaseModel(num_defect_families=num_defect_families)
+
+
+def _add_training_arguments(parser: argparse.ArgumentParser, include_checkpoint: bool = False) -> None:
+    parser.add_argument("--manifest", required=True)
+    parser.add_argument("--index", default=None)
+    parser.add_argument("--variant", choices=("base", "lite"), default="base")
+    parser.add_argument("--run-root", default="artifacts")
+    parser.add_argument("--split", default="train")
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--steps-per-epoch", type=int, default=None)
+    parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--prefetch-factor", type=int, default=2)
+    parser.add_argument("--persistent-workers", action="store_true")
+    parser.add_argument("--global-batch-size", type=int, default=None)
+    parser.add_argument("--grad-accum-steps", type=int, default=1)
+    parser.add_argument("--precision", choices=("auto", "fp32", "fp16", "bf16"), default="auto")
+    parser.add_argument("--distributed-backend", default="auto")
+    parser.add_argument("--seed", type=int, default=17)
+    parser.add_argument("--log-every-n-steps", type=int, default=10)
+    parser.add_argument("--val-every-n-steps", type=int, default=0)
+    parser.add_argument("--checkpoint-every-n-steps", type=int, default=0)
+    parser.add_argument("--keep-last-k-checkpoints", type=int, default=2)
+    parser.add_argument("--resume-from", default=None)
+    parser.add_argument("--mask-ratio", type=float, default=0.4)
+    parser.add_argument("--gradient-clip-norm", type=float, default=1.0)
+    parser.add_argument("--focal-gamma", type=float, default=2.0)
+    parser.add_argument("--defect-positive-weight", type=float, default=1.0)
+    parser.add_argument("--reject-positive-weight", type=float, default=1.0)
+    parser.add_argument("--station-balanced-sampling", action="store_true")
+    parser.add_argument("--no-station-balanced-sampling", action="store_true")
+    if include_checkpoint:
+        parser.add_argument("--checkpoint", required=True)
+
+
+def _training_config_from_args(args: argparse.Namespace) -> TrainingConfig:
+    station_balanced_sampling = True
+    if getattr(args, "no_station_balanced_sampling", False):
+        station_balanced_sampling = False
+    elif getattr(args, "station_balanced_sampling", False):
+        station_balanced_sampling = True
+    return TrainingConfig(
+        defect_positive_weight=args.defect_positive_weight,
+        reject_positive_weight=args.reject_positive_weight,
+        focal_gamma=args.focal_gamma,
+        mask_ratio=args.mask_ratio,
+        gradient_clip_norm=args.gradient_clip_norm,
+        epochs=args.epochs,
+        steps_per_epoch=args.steps_per_epoch,
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        warmup_steps=args.warmup_steps,
+        num_workers=args.num_workers,
+        prefetch_factor=args.prefetch_factor,
+        persistent_workers=args.persistent_workers,
+        global_batch_size=args.global_batch_size,
+        per_device_batch_size=args.batch_size,
+        grad_accum_steps=args.grad_accum_steps,
+        precision=args.precision,
+        distributed_backend=args.distributed_backend,
+        seed=args.seed,
+        log_every_n_steps=args.log_every_n_steps,
+        val_every_n_steps=args.val_every_n_steps,
+        checkpoint_every_n_steps=args.checkpoint_every_n_steps,
+        keep_last_k_checkpoints=args.keep_last_k_checkpoints,
+        resume_from=args.resume_from,
+        station_balanced_sampling=station_balanced_sampling,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,6 +123,29 @@ def build_parser() -> argparse.ArgumentParser:
     dataset_build.add_argument("--source-dataset", default="folder_import")
     dataset_build.add_argument("--seed", type=int, default=17)
     dataset_build.set_defaults(func=_cmd_dataset_build)
+
+    dataset_build_hf = dataset_sub.add_parser(
+        "build-hf",
+        help="Materialize a public Hugging Face image dataset into a local grayscale manifest bundle.",
+    )
+    dataset_build_hf.add_argument("--dataset-name", required=True)
+    dataset_build_hf.add_argument("--output-dir", required=True)
+    dataset_build_hf.add_argument("--config-name", default=None)
+    dataset_build_hf.add_argument("--split", action="append", dest="splits", default=None)
+    dataset_build_hf.add_argument("--image-column", default="image")
+    dataset_build_hf.add_argument("--station-id", default="hf-public")
+    dataset_build_hf.add_argument("--product-family", default="unknown")
+    dataset_build_hf.add_argument("--geometry-mode", choices=("auto", "rect", "square"), default="auto")
+    dataset_build_hf.add_argument("--source-dataset", default=None)
+    dataset_build_hf.add_argument("--cache-dir", default=None)
+    dataset_build_hf.add_argument("--accept-reject-column", default=None)
+    dataset_build_hf.add_argument("--defect-tags-column", default=None)
+    dataset_build_hf.add_argument("--station-id-column", default=None)
+    dataset_build_hf.add_argument("--product-family-column", default=None)
+    dataset_build_hf.add_argument("--geometry-mode-column", default=None)
+    dataset_build_hf.add_argument("--metadata-column", action="append", dest="metadata_columns", default=None)
+    dataset_build_hf.add_argument("--allow-rgb-conversion", action="store_true")
+    dataset_build_hf.set_defaults(func=_cmd_dataset_build_hf)
 
     dataset_validate = dataset_sub.add_parser("validate", help="Validate a manifest.")
     dataset_validate.add_argument("manifest")
@@ -83,14 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("calibrate", _cmd_train_calibrate),
     ):
         sub = train_sub.add_parser(name)
-        sub.add_argument("--manifest", required=True)
-        sub.add_argument("--index", default=None)
-        sub.add_argument("--variant", choices=("base", "lite"), default="base")
-        sub.add_argument("--run-root", default="artifacts")
-        sub.add_argument("--split", default="train")
-        sub.add_argument("--batch-size", type=int, default=4)
-        if name == "resume":
-            sub.add_argument("--checkpoint", required=True)
+        _add_training_arguments(sub, include_checkpoint=(name == "resume"))
         sub.set_defaults(func=handler)
 
     evaluate = subparsers.add_parser("eval", help="Benchmark and calibration reports.")
@@ -153,6 +243,28 @@ def _cmd_dataset_build(args: argparse.Namespace):
     )
 
 
+def _cmd_dataset_build_hf(args: argparse.Namespace):
+    return build_huggingface_dataset_manifest(
+        dataset_name=args.dataset_name,
+        output_dir=args.output_dir,
+        config_name=args.config_name,
+        split_names=args.splits,
+        image_column=args.image_column,
+        station_id=args.station_id,
+        product_family=args.product_family,
+        geometry_mode=args.geometry_mode,
+        source_dataset=args.source_dataset,
+        cache_dir=args.cache_dir,
+        accept_reject_column=args.accept_reject_column,
+        defect_tags_column=args.defect_tags_column,
+        station_id_column=args.station_id_column,
+        product_family_column=args.product_family_column,
+        geometry_mode_column=args.geometry_mode_column,
+        metadata_columns=tuple(args.metadata_columns or ()),
+        strict_grayscale=not bool(args.allow_rgb_conversion),
+    )
+
+
 def _cmd_dataset_validate(args: argparse.Namespace):
     return validate_dataset_manifest(args.manifest)
 
@@ -185,6 +297,9 @@ def _cmd_train_pretrain(args: argparse.Namespace):
         run_root=args.run_root,
         split=args.split,
         batch_size=args.batch_size,
+        training_config=_training_config_from_args(args),
+        checkpoint_path=getattr(args, "checkpoint", None),
+        resume_from=args.resume_from,
     )
 
 
@@ -196,6 +311,9 @@ def _cmd_train_domain_adapt(args: argparse.Namespace):
         run_root=args.run_root,
         split=args.split,
         batch_size=args.batch_size,
+        training_config=_training_config_from_args(args),
+        checkpoint_path=getattr(args, "checkpoint", None),
+        resume_from=args.resume_from,
     )
 
 
@@ -207,6 +325,9 @@ def _cmd_train_finetune(args: argparse.Namespace):
         run_root=args.run_root,
         split=args.split,
         batch_size=args.batch_size,
+        training_config=_training_config_from_args(args),
+        checkpoint_path=getattr(args, "checkpoint", None),
+        resume_from=args.resume_from,
     )
 
 
@@ -219,6 +340,7 @@ def _cmd_train_resume(args: argparse.Namespace):
         split=args.split,
         batch_size=args.batch_size,
         checkpoint_path=args.checkpoint,
+        training_config=_training_config_from_args(args),
     )
 
 

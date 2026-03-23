@@ -114,6 +114,10 @@ The architecture is specifically tuned for tiny defects.
 
 Pretrain on unlabeled grayscale industrial imagery with masked-image or self-supervised objectives.
 
+- The production path is epoch-based and checkpointed.
+- Use `torchrun` and native PyTorch DDP on multi-GPU nodes.
+- Save the backbone, reconstruction head, optimizer state, scheduler state, scaler state, and run metadata.
+
 ### Domain Adaptation
 
 Adapt on unlabeled production frames from the target line so the model learns station optics, motion, and background statistics.
@@ -125,6 +129,15 @@ Finetune on image-level labels, with optional boxes or masks on curated hard cas
 ### Calibration
 
 Fit per-station thresholds and lightweight adapters without splitting into separate backbone models.
+
+## Checkpointing And Audit
+
+Real training jobs should distinguish between one-off smoke checks and production runs.
+
+- Smoke runs validate shape, import, and graph/export behavior.
+- Production runs are epoch-based and resume from checkpoint.
+- Every checkpoint should carry stage, epoch, global step, manifest path, index path, and resolved config metadata.
+- Run artifacts should include per-step metrics, per-epoch summaries, best/latest checkpoints, and calibration or benchmark reports when applicable.
 
 ## Explainability And Audit
 

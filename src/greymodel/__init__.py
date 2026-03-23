@@ -4,16 +4,20 @@ from .api import BaseModel, LiteModel
 from .calibration import CalibratedStationDecision, StationCalibration, StationCalibrator
 from .cli import cli_main
 from .data import (
+    DistributedShardedSampler,
     GreyInspectionDataset,
     ManifestInspectionDataset,
     StationBalancedManifestSampler,
     build_dataset_manifest,
     build_dataset_splits,
     build_dataset_ontology,
+    build_hf_dataset_manifest,
+    build_huggingface_dataset_manifest,
     build_hard_negative_subset,
     collate_batch,
     group_samples_by_station,
     ingest_dataset_manifest,
+    import_huggingface_dataset,
     infer_station_configs,
     load_dataset_index,
     load_dataset_manifest,
@@ -35,7 +39,17 @@ from .runners import (
 )
 from .synthetic import DefectInjection, inject_defect, inject_particle, inject_scratch, inject_streak
 from .tiling import TileCoverage, TileGrid, build_tile_grid, compute_tile_coverage, verify_defect_coverage
-from .tracking import RunContext, create_run_context, log_metrics, snapshot_manifest, snapshot_run_config
+from .tracking import (
+    RunContext,
+    create_run_context,
+    log_epoch_metrics,
+    log_metrics,
+    log_step_metrics,
+    snapshot_manifest,
+    snapshot_run_config,
+    write_summary,
+)
+from .training import TrainingBatch, TrainingConfig
 from .types import (
     BoxAnnotation,
     DatasetIndex,
@@ -60,6 +74,8 @@ __all__ = [
     "build_dataset_ontology",
     "build_dataset_splits",
     "build_explanation_bundle",
+    "build_hf_dataset_manifest",
+    "build_huggingface_dataset_manifest",
     "build_hard_negative_subset",
     "cli_main",
     "CalibratedStationDecision",
@@ -67,16 +83,20 @@ __all__ = [
     "DefectInjection",
     "DatasetIndex",
     "DatasetRecord",
+    "DistributedShardedSampler",
     "evaluate_predictions",
     "export_model_graph",
     "GeometryMode",
     "GreyInspectionDataset",
     "ingest_dataset_manifest",
     "infer_station_configs",
+    "import_huggingface_dataset",
     "LiteModel",
     "load_dataset_index",
     "load_dataset_manifest",
+    "log_epoch_metrics",
     "log_metrics",
+    "log_step_metrics",
     "ManifestInspectionDataset",
     "ModelInput",
     "ModelOutput",
@@ -99,6 +119,8 @@ __all__ = [
     "StationCalibrator",
     "StationConfig",
     "StationBalancedManifestSampler",
+    "TrainingBatch",
+    "TrainingConfig",
     "TensorBatch",
     "TileCoverage",
     "TileGrid",
@@ -116,4 +138,5 @@ __all__ = [
     "preprocess_sample",
     "stack_prepared_images",
     "verify_defect_coverage",
+    "write_summary",
 ]

@@ -12,6 +12,15 @@ External data should be imported from folders, because that matches how inspecti
 
 Internally, the framework should normalize folders into versioned manifests so the training and evaluation runs are reproducible.
 
+### Public Hugging Face Pretraining Import
+
+Pretraining can also start from a public Hugging Face image dataset, but the framework should still materialize it locally before training.
+
+- Import the source dataset with `greymodel dataset build-hf`.
+- Preserve split intent from Hugging Face, while normalizing `validation` to `val`.
+- Enforce grayscale by default so pretraining does not silently drift into an RGB workflow.
+- Materialize local `.npy` images and reuse the same `manifest.jsonl` and `dataset_index.json` contracts as folder imports.
+
 ### Internal Artifacts
 
 The canonical framework artifacts should include:
@@ -46,9 +55,34 @@ Without manifests, the framework cannot reliably do:
 
 ## Training Workflow
 
+### Smoke Runs Versus Real Training
+
+The repo supports two different execution modes.
+
+- Smoke runs are short, low-cost checks that validate wiring, manifests, and model startup.
+- Real training runs are epoch-based, checkpointed jobs launched through `torchrun` with native PyTorch DDP on a multi-GPU node.
+
+Smoke runs are useful for development, but they are not a substitute for a production pretraining or finetuning job.
+
+### Distributed Pretraining
+
+Pretraining should be launched with `torchrun` so the same code path can scale across GPUs without changing the model contract.
+
+- Use manifest-backed datasets and deterministic splits.
+- Shard data with DDP rather than hand-picking a single batch.
+- Track `epoch`, `global_step`, and optimizer/scheduler/scaler state in checkpoints.
+- Keep the run directory deterministic so a job can be resumed or audited later.
+
 ### Pretrain
 
 Use large unlabeled grayscale imagery and masked-image pretraining to learn generic line and part structure.
+
+Recommended workflow:
+
+1. Import a public grayscale Hugging Face dataset into `data/public_pretrain/`.
+2. Run `torchrun ... greymodel train pretrain` on that manifest.
+3. Build a separate manifest for your own production images.
+4. Warm-start `greymodel train finetune` from the best pretraining checkpoint.
 
 ### Domain Adapt
 
@@ -65,6 +99,16 @@ Use image-level labels as the main supervision signal.
 ### Calibrate
 
 Fit station-specific thresholds and, if needed, lightweight adapters.
+
+## Run Artifacts
+
+Training and evaluation jobs should write a predictable artifact set.
+
+- `metrics.jsonl` for per-step and per-epoch metrics.
+- `config_snapshot.json` for the resolved training configuration.
+- `manifest_snapshot.json` for the dataset/index references used by the run.
+- `checkpoints/` for latest and best checkpoints.
+- `reports/` for summary reports, calibration outputs, and benchmark results.
 
 ## Evaluation
 

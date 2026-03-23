@@ -6,14 +6,18 @@ from greymodel import (
     BaseModel,
     GreyInspectionDataset,
     LiteModel,
+    ManifestInspectionDataset,
     ModelInput,
     ModelOutput,
     PreparedImage,
     Sample,
+    StageResult,
     StationConfig,
+    StationBalancedManifestSampler,
     TensorBatch,
     TileCoverage,
     compute_tile_coverage,
+    run_pretraining_stage,
     preprocess_image,
 )
 
@@ -65,5 +69,9 @@ def test_public_runtime_and_dataset_symbols_are_exported() -> None:
     assert BaseModel is not None
     assert LiteModel is not None
     assert GreyInspectionDataset is not None
+    assert ManifestInspectionDataset is not None
+    assert StationBalancedManifestSampler is not None
+    assert StageResult is not None
+    assert run_pretraining_stage is not None
     assert preprocess_image is not None
     assert compute_tile_coverage is not None

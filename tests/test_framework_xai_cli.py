@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
+import types
 
 import numpy as np
+import pytest
 import torch
 
 from greymodel import BaseModel, ModelInput, StationConfig, build_dataset_manifest, cli_main
@@ -50,6 +53,15 @@ def _build_manifest(root: Path) -> Path:
     )
     index = build_dataset_manifest(dataset_root)
     return Path(index.manifest_path)
+
+
+def _install_fake_hf_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_module = types.ModuleType("datasets")
+    fake_module.load_dataset = lambda *args, **kwargs: {
+        "train": [{"image": np.zeros((12, 12), dtype=np.uint8), "sample_id": "hf-train-001"}],
+        "validation": [{"image": np.full((12, 12), 255, dtype=np.uint8), "sample_id": "hf-val-001"}],
+    }
+    monkeypatch.setitem(sys.modules, "datasets", fake_module)
 
 
 def test_torch_fx_can_trace_the_graph_export_adapter() -> None:
@@ -100,6 +112,16 @@ def test_cli_smoke_dataset_train_eval_explain(tmp_path: Path) -> None:
     assert (graph_dir / "model_graph.mmd").exists()
     assert (graph_dir / "model_graph.json").exists()
     assert (artifacts_dir / "finetune-base" / "reports" / "finetune_report.json").exists()
+
+
+def test_cli_can_build_huggingface_manifest_bundle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_hf_module(monkeypatch)
+    output_dir = tmp_path / "hf_bundle"
+
+    cli_main(["dataset", "build-hf", "--dataset-name", "fake/public-grayscale", "--output-dir", str(output_dir)])
+
+    assert (output_dir / "manifest.jsonl").exists()
+    assert (output_dir / "dataset_index.json").exists()
 
 
 def test_model_output_contract_still_has_top_tiles_and_heatmap() -> None:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import asdict
+import io
 from pathlib import Path
+import re
 from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
@@ -13,6 +15,7 @@ from .utils import (
     ensure_dir,
     first_nonempty,
     load_uint8_grayscale,
+    normalize_uint8_image,
     read_json,
     read_jsonl,
     stable_int_hash,
@@ -26,10 +29,197 @@ SUPPORTED_IMAGE_SUFFIXES = (".npy", ".pgm", ".png", ".jpg", ".jpeg", ".bmp", ".t
 POSITIVE_LABEL_FOLDERS = {"reject", "defect", "defects", "ng", "nok", "bad"}
 NEGATIVE_LABEL_FOLDERS = {"accept", "ok", "clean", "good", "pass"}
 PRODUCT_FAMILIES = {"syringe", "syringes", "vial", "vials"}
+GRAYSCALE_IMAGE_MODES = {"1", "L", "LA", "I", "I;16", "F"}
+
+
+def _require_torch():
+    try:
+        import torch
+    except ImportError as exc:
+        raise ImportError("PyTorch is required for sharded sampling utilities.") from exc
+    return torch
+
+
+def _require_huggingface_datasets():
+    try:
+        from datasets import load_dataset
+    except ImportError as exc:
+        raise ImportError(
+            "Hugging Face datasets support requires the `datasets` package. Install `greymodel[framework]` or add `datasets`."
+        ) from exc
+    return load_dataset
 
 
 def station_config_key(station_id: Any, geometry_mode: GeometryMode) -> str:
     return "%s::%s" % (station_id, geometry_mode.value)
+
+
+def _sanitize_artifact_component(value: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value).strip())
+    text = text.strip("._")
+    return text or "dataset"
+
+
+def _normalize_dataset_split_name(split_name: str) -> str:
+    normalized = str(split_name).strip().lower()
+    aliases = {"validation": "val", "valid": "val", "dev": "val"}
+    return aliases.get(normalized, normalized or "train")
+
+
+def _sanitize_metadata_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0:
+            return value.item()
+        if value.size <= 64:
+            return value.tolist()
+        return {"shape": list(value.shape), "dtype": str(value.dtype)}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_metadata_value(item) for item in list(value)[:32]]
+    if isinstance(value, Mapping):
+        sanitized = {}
+        for key, nested_value in list(value.items())[:32]:
+            if isinstance(nested_value, (bytes, bytearray)):
+                sanitized[str(key)] = {"num_bytes": len(nested_value)}
+            else:
+                sanitized[str(key)] = _sanitize_metadata_value(nested_value)
+        return sanitized
+    if isinstance(value, (bytes, bytearray)):
+        return {"num_bytes": len(value)}
+    return str(value)
+
+
+def _row_column(row: Mapping[str, Any], column_name: Optional[str], default: Any = None) -> Any:
+    if column_name in (None, ""):
+        return default
+    return row.get(str(column_name), default)
+
+
+def _to_grayscale_from_multichannel(image: np.ndarray) -> np.ndarray:
+    channels = image[..., :3].astype(np.float32)
+    grayscale = 0.299 * channels[..., 0] + 0.587 * channels[..., 1] + 0.114 * channels[..., 2]
+    return np.clip(np.rint(grayscale), 0.0, 255.0).astype(np.uint8)
+
+
+def _coerce_huggingface_image_to_uint8(image_value: Any, strict_grayscale: bool = True) -> np.ndarray:
+    if isinstance(image_value, np.ndarray):
+        image = image_value
+    elif hasattr(image_value, "convert") and hasattr(image_value, "mode"):
+        if strict_grayscale and str(image_value.mode) not in GRAYSCALE_IMAGE_MODES:
+            raise ValueError("Expected a grayscale Hugging Face image but found mode %s." % image_value.mode)
+        image = np.asarray(image_value.convert("L"))
+    elif isinstance(image_value, Mapping):
+        if "array" in image_value:
+            image = np.asarray(image_value["array"])
+        elif image_value.get("path"):
+            return load_uint8_grayscale(Path(str(image_value["path"])))
+        elif image_value.get("bytes") is not None:
+            try:
+                from PIL import Image
+            except ImportError as exc:
+                raise ImportError("Pillow is required to decode byte-backed Hugging Face images.") from exc
+            with Image.open(io.BytesIO(image_value["bytes"])) as pil_image:
+                return _coerce_huggingface_image_to_uint8(pil_image, strict_grayscale=strict_grayscale)
+        else:
+            raise TypeError("Unsupported Hugging Face image payload: %s" % sorted(image_value.keys()))
+    else:
+        raise TypeError("Unsupported Hugging Face image type: %s" % type(image_value).__name__)
+
+    if image.ndim == 3:
+        if image.shape[-1] == 1:
+            image = image[..., 0]
+        elif image.shape[-1] in (3, 4):
+            if strict_grayscale:
+                raise ValueError("Expected a grayscale Hugging Face image but found %d channels." % image.shape[-1])
+            image = _to_grayscale_from_multichannel(image)
+        else:
+            raise ValueError("Unsupported Hugging Face image shape: %s" % (image.shape,))
+    if image.ndim != 2:
+        raise ValueError("Expected a 2D grayscale image after conversion, got shape %s." % (image.shape,))
+    return normalize_uint8_image(image)
+
+
+def _resolve_huggingface_geometry_mode(
+    row: Mapping[str, Any],
+    image_shape: Tuple[int, int],
+    geometry_mode: str,
+    geometry_mode_column: Optional[str],
+) -> GeometryMode:
+    explicit = _row_column(row, geometry_mode_column)
+    if explicit not in (None, ""):
+        return GeometryMode.from_value(str(explicit))
+    if geometry_mode != "auto":
+        return GeometryMode.from_value(geometry_mode)
+    return GeometryMode.SQUARE if int(image_shape[0]) == int(image_shape[1]) else GeometryMode.RECT
+
+
+def _resolve_huggingface_accept_reject(row: Mapping[str, Any], accept_reject_column: Optional[str]) -> int:
+    value = _row_column(row, accept_reject_column)
+    if value in (None, "", []):
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, np.integer)):
+        return 0 if int(value) == 0 else 1
+    normalized = str(value).strip().lower()
+    if normalized in {"0", "false", "accept", "ok", "good", "clean", "negative"}:
+        return 0
+    if normalized in {"1", "true", "reject", "ng", "nok", "bad", "defect", "positive"}:
+        return 1
+    raise ValueError("Unsupported accept/reject value %r for Hugging Face row." % value)
+
+
+def _resolve_huggingface_defect_tags(row: Mapping[str, Any], defect_tags_column: Optional[str]) -> Tuple[str, ...]:
+    value = _row_column(row, defect_tags_column)
+    if value in (None, "", []):
+        return ()
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        return (normalized,) if normalized else ()
+    if isinstance(value, (list, tuple, set)):
+        return tuple(str(item).strip().lower() for item in value if str(item).strip())
+    return (str(value).strip().lower(),)
+
+
+def _build_explicit_split_payload(
+    records: Sequence[DatasetRecord],
+    output_path: Optional[Path | str] = None,
+    source: str = "explicit",
+    grouping_keys: Sequence[str] = (),
+) -> dict:
+    payload = {
+        "seed": None,
+        "ratios": None,
+        "grouping_keys": list(grouping_keys),
+        "assignments": {record.sample_id: record.split for record in records},
+        "generated_at": utc_timestamp(),
+        "source": source,
+    }
+    if output_path is not None:
+        write_json(Path(output_path), payload)
+    return payload
+
+
+def _resolve_huggingface_splits(
+    dataset_name: str,
+    config_name: Optional[str] = None,
+    split_names: Optional[Sequence[str]] = None,
+    cache_dir: Optional[Path | str] = None,
+):
+    load_dataset = _require_huggingface_datasets()
+    cache_dir_value = str(cache_dir) if cache_dir is not None else None
+    if split_names:
+        return [
+            (str(split_name), load_dataset(path=dataset_name, name=config_name, split=str(split_name), cache_dir=cache_dir_value))
+            for split_name in split_names
+        ]
+    dataset_bundle = load_dataset(path=dataset_name, name=config_name, cache_dir=cache_dir_value)
+    if hasattr(dataset_bundle, "items"):
+        return [(str(split_name), split_dataset) for split_name, split_dataset in dataset_bundle.items()]
+    return [("train", dataset_bundle)]
 
 
 def serialize_box(box: BoxAnnotation) -> dict:
@@ -522,6 +712,140 @@ def build_dataset_manifest(
     return index
 
 
+def build_huggingface_dataset_manifest(
+    dataset_name: str,
+    output_dir: Path | str,
+    config_name: Optional[str] = None,
+    split_names: Optional[Sequence[str]] = None,
+    image_column: str = "image",
+    station_id: Any = "hf-public",
+    product_family: str = "unknown",
+    geometry_mode: str = "auto",
+    source_dataset: Optional[str] = None,
+    cache_dir: Optional[Path | str] = None,
+    accept_reject_column: Optional[str] = None,
+    defect_tags_column: Optional[str] = None,
+    station_id_column: Optional[str] = None,
+    product_family_column: Optional[str] = None,
+    geometry_mode_column: Optional[str] = None,
+    metadata_columns: Sequence[str] = (),
+    strict_grayscale: bool = True,
+) -> DatasetIndex:
+    output_dir = ensure_dir(Path(output_dir))
+    materialized_root = ensure_dir(output_dir / "images")
+    source_name = str(source_dataset or dataset_name)
+    records: List[DatasetRecord] = []
+    resolved_splits = _resolve_huggingface_splits(
+        dataset_name=dataset_name,
+        config_name=config_name,
+        split_names=split_names,
+        cache_dir=cache_dir,
+    )
+    if not resolved_splits:
+        raise ValueError("No Hugging Face splits were resolved for %s." % dataset_name)
+
+    for original_split_name, split_dataset in resolved_splits:
+        normalized_split = _normalize_dataset_split_name(original_split_name)
+        split_dir_name = _sanitize_artifact_component(original_split_name or normalized_split)
+        split_image_root = ensure_dir(materialized_root / split_dir_name)
+        for row_index, row in enumerate(split_dataset):
+            if image_column not in row:
+                raise KeyError("Column %r is not present in Hugging Face dataset %s." % (image_column, dataset_name))
+            image = _coerce_huggingface_image_to_uint8(row[image_column], strict_grayscale=strict_grayscale)
+            image_path = split_image_root / ("%08d.npy" % row_index)
+            np.save(image_path, image)
+            auto_station_column = station_id_column if station_id_column is not None else ("station_id" if "station_id" in row else None)
+            auto_product_column = product_family_column if product_family_column is not None else ("product_family" if "product_family" in row else None)
+            auto_geometry_column = geometry_mode_column if geometry_mode_column is not None else ("geometry_mode" if "geometry_mode" in row else None)
+            resolved_geometry_mode = _resolve_huggingface_geometry_mode(
+                row,
+                image.shape,
+                geometry_mode=geometry_mode,
+                geometry_mode_column=auto_geometry_column,
+            )
+            resolved_station_id = _row_column(row, auto_station_column, station_id)
+            if auto_station_column is None and geometry_mode == "auto":
+                resolved_station_id = "%s-%s" % (resolved_station_id, resolved_geometry_mode.value)
+            resolved_product_family = str(_row_column(row, auto_product_column, product_family))
+            base_capture_metadata = _sanitize_metadata_value(row.get("capture_metadata", {}))
+            if not isinstance(base_capture_metadata, Mapping):
+                base_capture_metadata = {}
+            capture_metadata = {
+                **dict(base_capture_metadata),
+                "image_shape": list(image.shape),
+                "hf_dataset_name": dataset_name,
+                "hf_config_name": config_name,
+                "hf_original_split": str(original_split_name),
+                "hf_row_index": int(row_index),
+            }
+            for column_name in metadata_columns:
+                if column_name in row:
+                    capture_metadata[str(column_name)] = _sanitize_metadata_value(row[column_name])
+            records.append(
+                DatasetRecord(
+                    sample_id=str(row.get("sample_id", "%s/%08d.npy" % (split_dir_name, row_index))),
+                    image_path=str(image_path.resolve()),
+                    station_id=resolved_station_id,
+                    product_family=resolved_product_family,
+                    geometry_mode=resolved_geometry_mode,
+                    accept_reject=_resolve_huggingface_accept_reject(row, accept_reject_column),
+                    defect_tags=_resolve_huggingface_defect_tags(row, defect_tags_column),
+                    boxes=(),
+                    mask_path=None,
+                    split=normalized_split,
+                    capture_metadata=capture_metadata,
+                    source_dataset=source_name,
+                    review_state="unreviewed",
+                )
+            )
+    if not records:
+        raise ValueError("No records were materialized from Hugging Face dataset %s." % dataset_name)
+
+    station_configs = infer_station_configs(records)
+    manifest_path = output_dir / "manifest.jsonl"
+    ontology_path = output_dir / "ontology.json"
+    splits_path = output_dir / "splits.json"
+    hard_negatives_path = output_dir / "hard_negatives.jsonl"
+    index_path = output_dir / "dataset_index.json"
+    save_dataset_manifest(records, manifest_path)
+    ontology = build_dataset_ontology(records, output_path=ontology_path)
+    split_payload = _build_explicit_split_payload(records, output_path=splits_path, source="huggingface")
+    write_jsonl(hard_negatives_path, [])
+    index = DatasetIndex(
+        manifest_version="1.0",
+        ontology_version=str(ontology["ontology_version"]),
+        root_dir=str(materialized_root.resolve()),
+        manifest_path=str(manifest_path.resolve()),
+        splits_path=str(splits_path.resolve()),
+        ontology_path=str(ontology_path.resolve()),
+        hard_negatives_path=str(hard_negatives_path.resolve()),
+        index_path=str(index_path.resolve()),
+        split_seed=0,
+        grouping_keys=(),
+        split_assignments=dict(split_payload["assignments"]),
+        hard_negative_ids=(),
+        review_subset_ids=(),
+        station_configs={key: serialize_station_config(config) for key, config in station_configs.items()},
+        metadata={
+            "created_at": utc_timestamp(),
+            "num_records": len(records),
+            "source": "huggingface",
+            "dataset_name": dataset_name,
+            "config_name": config_name,
+            "requested_splits": list(split_names or ()),
+            "image_column": image_column,
+            "strict_grayscale": bool(strict_grayscale),
+            "metadata_columns": list(metadata_columns),
+        },
+    )
+    save_dataset_index(index, index_path)
+    return index
+
+
+build_hf_dataset_manifest = build_huggingface_dataset_manifest
+import_huggingface_dataset = build_huggingface_dataset_manifest
+
+
 def load_station_configs_from_index(index: DatasetIndex | Path | str) -> Dict[str, StationConfig]:
     if not isinstance(index, DatasetIndex):
         index = load_dataset_index(index)
@@ -561,6 +885,7 @@ class ManifestInspectionDataset:
         split: Optional[str] = None,
     ) -> None:
         self.manifest_path = Path(manifest_path)
+        self.split = split
         self.records = load_dataset_manifest(self.manifest_path)
         if split is not None:
             self.records = [record for record in self.records if record.split == split]
@@ -591,15 +916,93 @@ class ManifestInspectionDataset:
 
 
 class StationBalancedManifestSampler:
-    def __init__(self, records: Sequence[DatasetRecord]) -> None:
+    def __init__(
+        self,
+        records: Sequence[DatasetRecord],
+        num_replicas: int = 1,
+        rank: int = 0,
+        shuffle: bool = False,
+        seed: int = 17,
+        drop_last: bool = False,
+    ) -> None:
         self.records = list(records)
-        self.indices = station_balanced_record_order(self.records)
+        self.num_replicas = max(int(num_replicas), 1)
+        self.rank = int(rank)
+        self.shuffle = bool(shuffle)
+        self.seed = int(seed)
+        self.drop_last = bool(drop_last)
+        self.epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = int(epoch)
 
     def __len__(self) -> int:
-        return len(self.indices)
+        base_length = len(self.records)
+        if self.num_replicas == 1:
+            return base_length
+        if self.drop_last:
+            return base_length // self.num_replicas
+        return int(np.ceil(base_length / float(self.num_replicas)))
 
     def __iter__(self) -> Iterator[int]:
-        return iter(self.indices)
+        indices = station_balanced_record_order(self.records)
+        if self.shuffle and indices:
+            rng = np.random.RandomState(self.seed + self.epoch)
+            rng.shuffle(indices)
+        if self.num_replicas == 1:
+            return iter(indices)
+        if self.drop_last:
+            usable = (len(indices) // self.num_replicas) * self.num_replicas
+            indices = indices[:usable]
+        else:
+            while len(indices) % self.num_replicas != 0 and indices:
+                indices.append(indices[len(indices) % len(indices)])
+        return iter(indices[self.rank :: self.num_replicas])
+
+
+class DistributedShardedSampler:
+    def __init__(
+        self,
+        indices: Sequence[int],
+        num_replicas: int = 1,
+        rank: int = 0,
+        shuffle: bool = True,
+        seed: int = 17,
+        drop_last: bool = False,
+    ) -> None:
+        self.indices = list(indices)
+        self.num_replicas = max(int(num_replicas), 1)
+        self.rank = int(rank)
+        self.shuffle = bool(shuffle)
+        self.seed = int(seed)
+        self.drop_last = bool(drop_last)
+        self.epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = int(epoch)
+
+    def __len__(self) -> int:
+        base_length = len(self.indices)
+        if self.num_replicas == 1:
+            return base_length
+        if self.drop_last:
+            return base_length // self.num_replicas
+        return int(np.ceil(base_length / float(self.num_replicas)))
+
+    def __iter__(self) -> Iterator[int]:
+        indices = list(self.indices)
+        if self.shuffle and indices:
+            rng = np.random.RandomState(self.seed + self.epoch)
+            rng.shuffle(indices)
+        if self.num_replicas == 1:
+            return iter(indices)
+        if self.drop_last:
+            usable = (len(indices) // self.num_replicas) * self.num_replicas
+            indices = indices[:usable]
+        else:
+            while len(indices) % self.num_replicas != 0 and indices:
+                indices.append(indices[len(indices) % len(indices)])
+        return iter(indices[self.rank :: self.num_replicas])
 
 
 def register_synthetic_recipe(
