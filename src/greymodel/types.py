@@ -123,6 +123,106 @@ class TopTilePrediction:
     index: Any
 
 
+@dataclass(frozen=True)
+class BoxAnnotation:
+    xyxy: Tuple[int, int, int, int]
+    defect_tag: str = "unknown"
+    confidence: float = 1.0
+    annotator: str = "unknown"
+    is_hard_case: bool = False
+
+    def __post_init__(self) -> None:
+        if len(self.xyxy) != 4:
+            raise ValueError("BoxAnnotation.xyxy must contain four integers.")
+        x1, y1, x2, y2 = [int(value) for value in self.xyxy]
+        if x2 <= x1 or y2 <= y1:
+            raise ValueError("BoxAnnotation.xyxy must define a positive-area box.")
+        object.__setattr__(self, "xyxy", (x1, y1, x2, y2))
+
+    @property
+    def area(self) -> int:
+        x1, y1, x2, y2 = self.xyxy
+        return int(max(x2 - x1, 0) * max(y2 - y1, 0))
+
+
+@dataclass
+class DatasetRecord:
+    sample_id: str
+    image_path: str
+    station_id: Any
+    product_family: str
+    geometry_mode: GeometryMode
+    accept_reject: int
+    defect_tags: Tuple[str, ...] = ()
+    boxes: Tuple[BoxAnnotation, ...] = ()
+    mask_path: Optional[str] = None
+    split: str = "unspecified"
+    capture_metadata: Mapping[str, Any] = field(default_factory=dict)
+    source_dataset: str = "unknown"
+    review_state: str = "unreviewed"
+
+    def __post_init__(self) -> None:
+        if isinstance(self.geometry_mode, str):
+            self.geometry_mode = GeometryMode.from_value(self.geometry_mode)
+        if self.accept_reject not in (0, 1):
+            raise ValueError("DatasetRecord.accept_reject must be 0 or 1.")
+        if isinstance(self.defect_tags, list):
+            self.defect_tags = tuple(self.defect_tags)
+        if isinstance(self.boxes, list):
+            self.boxes = tuple(self.boxes)
+
+    def to_sample(self, image_uint8: np.ndarray) -> Sample:
+        metadata = dict(self.capture_metadata)
+        metadata.update(
+            {
+                "sample_id": self.sample_id,
+                "source_dataset": self.source_dataset,
+                "review_state": self.review_state,
+            }
+        )
+        return Sample(
+            image_uint8=image_uint8,
+            station_id=self.station_id,
+            product_family=self.product_family,
+            geometry_mode=self.geometry_mode,
+            accept_reject=self.accept_reject,
+            defect_tags=self.defect_tags,
+            metadata=metadata,
+        )
+
+
+@dataclass
+class DatasetIndex:
+    manifest_version: str
+    ontology_version: str
+    root_dir: str
+    manifest_path: str
+    splits_path: str
+    ontology_path: str
+    hard_negatives_path: str
+    index_path: Optional[str] = None
+    split_seed: int = 17
+    grouping_keys: Tuple[str, ...] = ("station_id", "capture_day", "batch_id", "camera_id")
+    split_assignments: Mapping[str, str] = field(default_factory=dict)
+    hard_negative_ids: Tuple[str, ...] = ()
+    review_subset_ids: Tuple[str, ...] = ()
+    station_configs: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PredictionRecord:
+    sample_id: str
+    station_id: Any
+    accept_reject: int
+    reject_score: float
+    predicted_label: int
+    defect_probs: Mapping[str, float] = field(default_factory=dict)
+    split: str = "unspecified"
+    defect_scale: str = "unknown"
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
 @dataclass
 class ModelOutput:
     reject_score: Any

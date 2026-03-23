@@ -1,0 +1,522 @@
+graph TD
+  image["placeholder\nimage"]
+  valid_mask["placeholder\nvalid_mask"]
+  station_id["placeholder\nstation_id"]
+  geometry_id["placeholder\ngeometry_id"]
+  conditioner_station_embedding["call_module\nconditioner.station_embedding"]
+  conditioner_geometry_embedding["call_module\nconditioner.geometry_embedding"]
+  add["call_function\n<built-in function add>"]
+  conditioner_proj_0["call_module\nconditioner.proj.0"]
+  conditioner_proj_1["call_module\nconditioner.proj.1"]
+  conditioner_proj_2["call_module\nconditioner.proj.2"]
+  conditioner_proj_3["call_module\nconditioner.proj.3"]
+  stem_0_block_0["call_module\nstem.0.block.0"]
+  stem_0_block_1["call_module\nstem.0.block.1"]
+  stem_0_block_2["call_module\nstem.0.block.2"]
+  stem_1_block_0["call_module\nstem.1.block.0"]
+  stem_1_block_1["call_module\nstem.1.block.1"]
+  stem_1_block_2["call_module\nstem.1.block.2"]
+  stem_2_block_0["call_module\nstem.2.block.0"]
+  stem_2_block_1["call_module\nstem.2.block.1"]
+  stem_2_block_2["call_module\nstem.2.block.2"]
+  stem_affine_scale["call_module\nstem_affine.scale"]
+  tanh["call_function\n<built-in method tanh of type object at 0x00007FF9AC200E90>"]
+  unsqueeze["call_method\nunsqueeze"]
+  unsqueeze_1["call_method\nunsqueeze"]
+  stem_affine_bias["call_module\nstem_affine.bias"]
+  unsqueeze_2["call_method\nunsqueeze"]
+  unsqueeze_3["call_method\nunsqueeze"]
+  add_1["call_function\n<built-in function add>"]
+  mul["call_function\n<built-in function mul>"]
+  add_2["call_function\n<built-in function add>"]
+  global_downsample_0_block_0["call_module\nglobal_downsample.0.block.0"]
+  global_downsample_0_block_1["call_module\nglobal_downsample.0.block.1"]
+  global_downsample_0_block_2["call_module\nglobal_downsample.0.block.2"]
+  global_downsample_1_block_0["call_module\nglobal_downsample.1.block.0"]
+  global_downsample_1_block_1["call_module\nglobal_downsample.1.block.1"]
+  global_downsample_1_block_2["call_module\nglobal_downsample.1.block.2"]
+  global_affine_scale["call_module\nglobal_affine.scale"]
+  tanh_1["call_function\n<built-in method tanh of type object at 0x00007FF9AC200E90>"]
+  unsqueeze_4["call_method\nunsqueeze"]
+  unsqueeze_5["call_method\nunsqueeze"]
+  global_affine_bias["call_module\nglobal_affine.bias"]
+  unsqueeze_6["call_method\nunsqueeze"]
+  unsqueeze_7["call_method\nunsqueeze"]
+  add_3["call_function\n<built-in function add>"]
+  mul_1["call_function\n<built-in function mul>"]
+  add_4["call_function\n<built-in function add>"]
+  interpolate["call_function\n<function interpolate at 0x00000234EBEA25E0>"]
+  flatten["call_method\nflatten"]
+  transpose["call_method\ntranspose"]
+  flatten_1["call_method\nflatten"]
+  squeeze["call_method\nsqueeze"]
+  gt["call_function\n<built-in function gt>"]
+  transformer_0_norm1["call_module\ntransformer.0.norm1"]
+  getattr_1["call_function\n<built-in function getattr>"]
+  getitem["call_function\n<built-in function getitem>"]
+  getitem_1["call_function\n<built-in function getitem>"]
+  getitem_2["call_function\n<built-in function getitem>"]
+  transformer_0_attn_qkv["call_module\ntransformer.0.attn.qkv"]
+  reshape["call_method\nreshape"]
+  permute["call_method\npermute"]
+  getitem_3["call_function\n<built-in function getitem>"]
+  getitem_4["call_function\n<built-in function getitem>"]
+  getitem_5["call_function\n<built-in function getitem>"]
+  mul_2["call_function\n<built-in function mul>"]
+  transpose_1["call_method\ntranspose"]
+  matmul["call_function\n<built-in method matmul of type object at 0x00007FF9AC200E90>"]
+  _rel_bias_0["get_attr\n_rel_bias_0"]
+  add_5["call_function\n<built-in function add>"]
+  unsqueeze_8["call_method\nunsqueeze"]
+  unsqueeze_9["call_method\nunsqueeze"]
+  invert["call_function\n<built-in function invert>"]
+  masked_fill["call_method\nmasked_fill"]
+  softmax["call_function\n<built-in method softmax of type object at 0x00007FF9AC200E90>"]
+  matmul_1["call_function\n<built-in method matmul of type object at 0x00007FF9AC200E90>"]
+  transpose_2["call_method\ntranspose"]
+  reshape_1["call_method\nreshape"]
+  unsqueeze_10["call_method\nunsqueeze"]
+  getattr_2["call_function\n<built-in function getattr>"]
+  to["call_method\nto"]
+  mul_3["call_function\n<built-in function mul>"]
+  transformer_0_attn_out["call_module\ntransformer.0.attn.out"]
+  add_6["call_function\n<built-in function add>"]
+  transformer_0_norm2["call_module\ntransformer.0.norm2"]
+  transformer_0_mlp_0["call_module\ntransformer.0.mlp.0"]
+  transformer_0_mlp_1["call_module\ntransformer.0.mlp.1"]
+  transformer_0_mlp_2["call_module\ntransformer.0.mlp.2"]
+  add_7["call_function\n<built-in function add>"]
+  unsqueeze_11["call_method\nunsqueeze"]
+  getattr_3["call_function\n<built-in function getattr>"]
+  to_1["call_method\nto"]
+  mul_4["call_function\n<built-in function mul>"]
+  transformer_1_norm1["call_module\ntransformer.1.norm1"]
+  getattr_4["call_function\n<built-in function getattr>"]
+  getitem_6["call_function\n<built-in function getitem>"]
+  getitem_7["call_function\n<built-in function getitem>"]
+  getitem_8["call_function\n<built-in function getitem>"]
+  transformer_1_attn_qkv["call_module\ntransformer.1.attn.qkv"]
+  reshape_2["call_method\nreshape"]
+  permute_1["call_method\npermute"]
+  getitem_9["call_function\n<built-in function getitem>"]
+  getitem_10["call_function\n<built-in function getitem>"]
+  getitem_11["call_function\n<built-in function getitem>"]
+  mul_5["call_function\n<built-in function mul>"]
+  transpose_3["call_method\ntranspose"]
+  matmul_2["call_function\n<built-in method matmul of type object at 0x00007FF9AC200E90>"]
+  _rel_bias_1["get_attr\n_rel_bias_1"]
+  add_8["call_function\n<built-in function add>"]
+  unsqueeze_12["call_method\nunsqueeze"]
+  unsqueeze_13["call_method\nunsqueeze"]
+  invert_1["call_function\n<built-in function invert>"]
+  masked_fill_1["call_method\nmasked_fill"]
+  softmax_1["call_function\n<built-in method softmax of type object at 0x00007FF9AC200E90>"]
+  matmul_3["call_function\n<built-in method matmul of type object at 0x00007FF9AC200E90>"]
+  transpose_4["call_method\ntranspose"]
+  reshape_3["call_method\nreshape"]
+  unsqueeze_14["call_method\nunsqueeze"]
+  getattr_5["call_function\n<built-in function getattr>"]
+  to_2["call_method\nto"]
+  mul_6["call_function\n<built-in function mul>"]
+  transformer_1_attn_out["call_module\ntransformer.1.attn.out"]
+  add_9["call_function\n<built-in function add>"]
+  transformer_1_norm2["call_module\ntransformer.1.norm2"]
+  transformer_1_mlp_0["call_module\ntransformer.1.mlp.0"]
+  transformer_1_mlp_1["call_module\ntransformer.1.mlp.1"]
+  transformer_1_mlp_2["call_module\ntransformer.1.mlp.2"]
+  add_10["call_function\n<built-in function add>"]
+  unsqueeze_15["call_method\nunsqueeze"]
+  getattr_6["call_function\n<built-in function getattr>"]
+  to_3["call_method\nto"]
+  mul_7["call_function\n<built-in function mul>"]
+  transpose_5["call_method\ntranspose"]
+  reshape_as["call_method\nreshape_as"]
+  mul_8["call_function\n<built-in function mul>"]
+  sum_1["call_method\nsum"]
+  clamp_min["call_method\nclamp_min"]
+  sum_2["call_method\nsum"]
+  truediv["call_function\n<built-in function truediv>"]
+  getitem_12["call_function\n<built-in function getitem>"]
+  getitem_13["call_function\n<built-in function getitem>"]
+  stack["call_function\n<built-in method stack of type object at 0x00007FF9AC200E90>"]
+  stack_1["call_function\n<built-in method stack of type object at 0x00007FF9AC200E90>"]
+  getattr_7["call_function\n<built-in function getattr>"]
+  getitem_14["call_function\n<built-in function getitem>"]
+  getitem_15["call_function\n<built-in function getitem>"]
+  getitem_16["call_function\n<built-in function getitem>"]
+  getitem_17["call_function\n<built-in function getitem>"]
+  getitem_18["call_function\n<built-in function getitem>"]
+  mul_9["call_function\n<built-in function mul>"]
+  reshape_4["call_method\nreshape"]
+  mul_10["call_function\n<built-in function mul>"]
+  reshape_5["call_method\nreshape"]
+  local_encoder_net_0_block_0["call_module\nlocal_encoder.net.0.block.0"]
+  local_encoder_net_0_block_1["call_module\nlocal_encoder.net.0.block.1"]
+  local_encoder_net_0_block_2["call_module\nlocal_encoder.net.0.block.2"]
+  local_encoder_net_1_block_0["call_module\nlocal_encoder.net.1.block.0"]
+  local_encoder_net_1_block_1["call_module\nlocal_encoder.net.1.block.1"]
+  local_encoder_net_1_block_2["call_module\nlocal_encoder.net.1.block.2"]
+  local_encoder_net_2_block_0["call_module\nlocal_encoder.net.2.block.0"]
+  local_encoder_net_2_block_1["call_module\nlocal_encoder.net.2.block.1"]
+  local_encoder_net_2_block_2["call_module\nlocal_encoder.net.2.block.2"]
+  local_encoder_net_3_block_0["call_module\nlocal_encoder.net.3.block.0"]
+  local_encoder_net_3_block_1["call_module\nlocal_encoder.net.3.block.1"]
+  local_encoder_net_3_block_2["call_module\nlocal_encoder.net.3.block.2"]
+  getattr_8["call_function\n<built-in function getattr>"]
+  getitem_19["call_function\n<built-in function getitem>"]
+  interpolate_1["call_function\n<function interpolate at 0x00000234EBEA25E0>"]
+  mul_11["call_function\n<built-in function mul>"]
+  sum_3["call_method\nsum"]
+  clamp_min_1["call_method\nclamp_min"]
+  sum_4["call_method\nsum"]
+  truediv_1["call_function\n<built-in function truediv>"]
+  local_encoder_project["call_module\nlocal_encoder.project"]
+  reshape_6["call_method\nreshape"]
+  local_affine_scale["call_module\nlocal_affine.scale"]
+  tanh_2["call_function\n<built-in method tanh of type object at 0x00007FF9AC200E90>"]
+  unsqueeze_16["call_method\nunsqueeze"]
+  local_affine_bias["call_module\nlocal_affine.bias"]
+  unsqueeze_17["call_method\nunsqueeze"]
+  add_11["call_function\n<built-in function add>"]
+  mul_12["call_function\n<built-in function mul>"]
+  add_12["call_function\n<built-in function add>"]
+  tile_classifier["call_module\ntile_classifier"]
+  squeeze_1["call_method\nsqueeze"]
+  mean["call_method\nmean"]
+  ge["call_function\n<built-in function ge>"]
+  tile_pool_attention["call_module\ntile_pool.attention"]
+  squeeze_2["call_method\nsqueeze"]
+  invert_2["call_function\n<built-in function invert>"]
+  masked_fill_2["call_method\nmasked_fill"]
+  softmax_2["call_function\n<built-in method softmax of type object at 0x00007FF9AC200E90>"]
+  unsqueeze_18["call_method\nunsqueeze"]
+  mul_13["call_function\n<built-in function mul>"]
+  sum_5["call_method\nsum"]
+  global_project["call_module\nglobal_project"]
+  local_project["call_module\nlocal_project"]
+  condition_project["call_module\ncondition_project"]
+  cat["call_function\n<built-in method cat of type object at 0x00007FF9AC200E90>"]
+  fusion_gate_0["call_module\nfusion_gate.0"]
+  fusion_gate_1["call_module\nfusion_gate.1"]
+  fusion_gate_2["call_module\nfusion_gate.2"]
+  sigmoid["call_function\n<built-in method sigmoid of type object at 0x00007FF9AC200E90>"]
+  mul_14["call_function\n<built-in function mul>"]
+  sub["call_function\n<built-in function sub>"]
+  mul_15["call_function\n<built-in function mul>"]
+  add_13["call_function\n<built-in function add>"]
+  mul_16["call_function\n<built-in function mul>"]
+  add_14["call_function\n<built-in function add>"]
+  reject_head["call_module\nreject_head"]
+  squeeze_3["call_method\nsqueeze"]
+  defect_head["call_module\ndefect_head"]
+  global_heatmap_head["call_module\nglobal_heatmap_head"]
+  interpolate_2["call_function\n<function interpolate at 0x00000234EBEA25E0>"]
+  getattr_9["call_function\n<built-in function getattr>"]
+  getitem_20["call_function\n<built-in function getitem>"]
+  getattr_10["call_function\n<built-in function getattr>"]
+  getitem_21["call_function\n<built-in function getitem>"]
+  view["call_method\nview"]
+  _tensor_constant0["get_attr\n_tensor_constant0"]
+  mul_17["call_function\n<built-in function mul>"]
+  sum_6["call_method\nsum"]
+  tile_mask_counts["get_attr\ntile_mask_counts"]
+  truediv_2["call_function\n<built-in function truediv>"]
+  mul_18["call_function\n<built-in function mul>"]
+  mul_19["call_function\n<built-in function mul>"]
+  mul_20["call_function\n<built-in function mul>"]
+  add_15["call_function\n<built-in function add>"]
+  sigmoid_1["call_function\n<built-in method sigmoid of type object at 0x00007FF9AC200E90>"]
+  mul_21["call_function\n<built-in function mul>"]
+  output["output\noutput"]
+  station_id --> conditioner_station_embedding
+  geometry_id --> conditioner_geometry_embedding
+  conditioner_station_embedding --> add
+  conditioner_geometry_embedding --> add
+  add --> conditioner_proj_0
+  conditioner_proj_0 --> conditioner_proj_1
+  conditioner_proj_1 --> conditioner_proj_2
+  conditioner_proj_2 --> conditioner_proj_3
+  image --> stem_0_block_0
+  stem_0_block_0 --> stem_0_block_1
+  stem_0_block_1 --> stem_0_block_2
+  stem_0_block_2 --> stem_1_block_0
+  stem_1_block_0 --> stem_1_block_1
+  stem_1_block_1 --> stem_1_block_2
+  stem_1_block_2 --> stem_2_block_0
+  stem_2_block_0 --> stem_2_block_1
+  stem_2_block_1 --> stem_2_block_2
+  conditioner_proj_3 --> stem_affine_scale
+  stem_affine_scale --> tanh
+  tanh --> unsqueeze
+  unsqueeze --> unsqueeze_1
+  conditioner_proj_3 --> stem_affine_bias
+  stem_affine_bias --> unsqueeze_2
+  unsqueeze_2 --> unsqueeze_3
+  unsqueeze_1 --> add_1
+  stem_2_block_2 --> mul
+  add_1 --> mul
+  mul --> add_2
+  unsqueeze_3 --> add_2
+  add_2 --> global_downsample_0_block_0
+  global_downsample_0_block_0 --> global_downsample_0_block_1
+  global_downsample_0_block_1 --> global_downsample_0_block_2
+  global_downsample_0_block_2 --> global_downsample_1_block_0
+  global_downsample_1_block_0 --> global_downsample_1_block_1
+  global_downsample_1_block_1 --> global_downsample_1_block_2
+  conditioner_proj_3 --> global_affine_scale
+  global_affine_scale --> tanh_1
+  tanh_1 --> unsqueeze_4
+  unsqueeze_4 --> unsqueeze_5
+  conditioner_proj_3 --> global_affine_bias
+  global_affine_bias --> unsqueeze_6
+  unsqueeze_6 --> unsqueeze_7
+  unsqueeze_5 --> add_3
+  global_downsample_1_block_2 --> mul_1
+  add_3 --> mul_1
+  mul_1 --> add_4
+  unsqueeze_7 --> add_4
+  valid_mask --> interpolate
+  add_4 --> flatten
+  flatten --> transpose
+  interpolate --> flatten_1
+  flatten_1 --> squeeze
+  squeeze --> gt
+  transpose --> transformer_0_norm1
+  transformer_0_norm1 --> getattr_1
+  getattr_1 --> getitem
+  getattr_1 --> getitem_1
+  getattr_1 --> getitem_2
+  transformer_0_norm1 --> transformer_0_attn_qkv
+  transformer_0_attn_qkv --> reshape
+  getitem --> reshape
+  getitem_1 --> reshape
+  reshape --> permute
+  permute --> getitem_3
+  permute --> getitem_4
+  permute --> getitem_5
+  getitem_3 --> mul_2
+  getitem_4 --> transpose_1
+  mul_2 --> matmul
+  transpose_1 --> matmul
+  matmul --> add_5
+  _rel_bias_0 --> add_5
+  gt --> unsqueeze_8
+  unsqueeze_8 --> unsqueeze_9
+  unsqueeze_9 --> invert
+  add_5 --> masked_fill
+  invert --> masked_fill
+  masked_fill --> softmax
+  softmax --> matmul_1
+  getitem_5 --> matmul_1
+  matmul_1 --> transpose_2
+  transpose_2 --> reshape_1
+  getitem --> reshape_1
+  getitem_1 --> reshape_1
+  getitem_2 --> reshape_1
+  gt --> unsqueeze_10
+  reshape_1 --> getattr_2
+  unsqueeze_10 --> to
+  getattr_2 --> to
+  reshape_1 --> mul_3
+  to --> mul_3
+  mul_3 --> transformer_0_attn_out
+  transpose --> add_6
+  transformer_0_attn_out --> add_6
+  add_6 --> transformer_0_norm2
+  transformer_0_norm2 --> transformer_0_mlp_0
+  transformer_0_mlp_0 --> transformer_0_mlp_1
+  transformer_0_mlp_1 --> transformer_0_mlp_2
+  add_6 --> add_7
+  transformer_0_mlp_2 --> add_7
+  gt --> unsqueeze_11
+  add_7 --> getattr_3
+  unsqueeze_11 --> to_1
+  getattr_3 --> to_1
+  add_7 --> mul_4
+  to_1 --> mul_4
+  mul_4 --> transformer_1_norm1
+  transformer_1_norm1 --> getattr_4
+  getattr_4 --> getitem_6
+  getattr_4 --> getitem_7
+  getattr_4 --> getitem_8
+  transformer_1_norm1 --> transformer_1_attn_qkv
+  transformer_1_attn_qkv --> reshape_2
+  getitem_6 --> reshape_2
+  getitem_7 --> reshape_2
+  reshape_2 --> permute_1
+  permute_1 --> getitem_9
+  permute_1 --> getitem_10
+  permute_1 --> getitem_11
+  getitem_9 --> mul_5
+  getitem_10 --> transpose_3
+  mul_5 --> matmul_2
+  transpose_3 --> matmul_2
+  matmul_2 --> add_8
+  _rel_bias_1 --> add_8
+  gt --> unsqueeze_12
+  unsqueeze_12 --> unsqueeze_13
+  unsqueeze_13 --> invert_1
+  add_8 --> masked_fill_1
+  invert_1 --> masked_fill_1
+  masked_fill_1 --> softmax_1
+  softmax_1 --> matmul_3
+  getitem_11 --> matmul_3
+  matmul_3 --> transpose_4
+  transpose_4 --> reshape_3
+  getitem_6 --> reshape_3
+  getitem_7 --> reshape_3
+  getitem_8 --> reshape_3
+  gt --> unsqueeze_14
+  reshape_3 --> getattr_5
+  unsqueeze_14 --> to_2
+  getattr_5 --> to_2
+  reshape_3 --> mul_6
+  to_2 --> mul_6
+  mul_6 --> transformer_1_attn_out
+  mul_4 --> add_9
+  transformer_1_attn_out --> add_9
+  add_9 --> transformer_1_norm2
+  transformer_1_norm2 --> transformer_1_mlp_0
+  transformer_1_mlp_0 --> transformer_1_mlp_1
+  transformer_1_mlp_1 --> transformer_1_mlp_2
+  add_9 --> add_10
+  transformer_1_mlp_2 --> add_10
+  gt --> unsqueeze_15
+  add_10 --> getattr_6
+  unsqueeze_15 --> to_3
+  getattr_6 --> to_3
+  add_10 --> mul_7
+  to_3 --> mul_7
+  mul_7 --> transpose_5
+  transpose_5 --> reshape_as
+  add_4 --> reshape_as
+  reshape_as --> mul_8
+  interpolate --> mul_8
+  interpolate --> sum_1
+  sum_1 --> clamp_min
+  mul_8 --> sum_2
+  sum_2 --> truediv
+  clamp_min --> truediv
+  image --> getitem_12
+  valid_mask --> getitem_13
+  getitem_12 --> stack
+  getitem_13 --> stack_1
+  stack --> getattr_7
+  getattr_7 --> getitem_14
+  getattr_7 --> getitem_15
+  getattr_7 --> getitem_16
+  getattr_7 --> getitem_17
+  getattr_7 --> getitem_18
+  getitem_14 --> mul_9
+  getitem_15 --> mul_9
+  stack --> reshape_4
+  mul_9 --> reshape_4
+  getitem_16 --> reshape_4
+  getitem_17 --> reshape_4
+  getitem_18 --> reshape_4
+  getitem_14 --> mul_10
+  getitem_15 --> mul_10
+  stack_1 --> reshape_5
+  mul_10 --> reshape_5
+  getitem_17 --> reshape_5
+  getitem_18 --> reshape_5
+  reshape_4 --> local_encoder_net_0_block_0
+  local_encoder_net_0_block_0 --> local_encoder_net_0_block_1
+  local_encoder_net_0_block_1 --> local_encoder_net_0_block_2
+  local_encoder_net_0_block_2 --> local_encoder_net_1_block_0
+  local_encoder_net_1_block_0 --> local_encoder_net_1_block_1
+  local_encoder_net_1_block_1 --> local_encoder_net_1_block_2
+  local_encoder_net_1_block_2 --> local_encoder_net_2_block_0
+  local_encoder_net_2_block_0 --> local_encoder_net_2_block_1
+  local_encoder_net_2_block_1 --> local_encoder_net_2_block_2
+  local_encoder_net_2_block_2 --> local_encoder_net_3_block_0
+  local_encoder_net_3_block_0 --> local_encoder_net_3_block_1
+  local_encoder_net_3_block_1 --> local_encoder_net_3_block_2
+  local_encoder_net_3_block_2 --> getattr_8
+  getattr_8 --> getitem_19
+  reshape_5 --> interpolate_1
+  getitem_19 --> interpolate_1
+  local_encoder_net_3_block_2 --> mul_11
+  interpolate_1 --> mul_11
+  interpolate_1 --> sum_3
+  sum_3 --> clamp_min_1
+  mul_11 --> sum_4
+  sum_4 --> truediv_1
+  clamp_min_1 --> truediv_1
+  truediv_1 --> local_encoder_project
+  local_encoder_project --> reshape_6
+  getitem_14 --> reshape_6
+  getitem_15 --> reshape_6
+  conditioner_proj_3 --> local_affine_scale
+  local_affine_scale --> tanh_2
+  tanh_2 --> unsqueeze_16
+  conditioner_proj_3 --> local_affine_bias
+  local_affine_bias --> unsqueeze_17
+  unsqueeze_16 --> add_11
+  reshape_6 --> mul_12
+  add_11 --> mul_12
+  mul_12 --> add_12
+  unsqueeze_17 --> add_12
+  add_12 --> tile_classifier
+  tile_classifier --> squeeze_1
+  stack_1 --> mean
+  mean --> ge
+  add_12 --> tile_pool_attention
+  tile_pool_attention --> squeeze_2
+  ge --> invert_2
+  squeeze_2 --> masked_fill_2
+  invert_2 --> masked_fill_2
+  masked_fill_2 --> softmax_2
+  softmax_2 --> unsqueeze_18
+  add_12 --> mul_13
+  unsqueeze_18 --> mul_13
+  mul_13 --> sum_5
+  truediv --> global_project
+  sum_5 --> local_project
+  conditioner_proj_3 --> condition_project
+  global_project --> cat
+  local_project --> cat
+  condition_project --> cat
+  cat --> fusion_gate_0
+  fusion_gate_0 --> fusion_gate_1
+  fusion_gate_1 --> fusion_gate_2
+  fusion_gate_2 --> sigmoid
+  sigmoid --> mul_14
+  global_project --> mul_14
+  sigmoid --> sub
+  sub --> mul_15
+  local_project --> mul_15
+  mul_14 --> add_13
+  mul_15 --> add_13
+  condition_project --> mul_16
+  add_13 --> add_14
+  mul_16 --> add_14
+  add_14 --> reject_head
+  reject_head --> squeeze_3
+  add_14 --> defect_head
+  reshape_as --> global_heatmap_head
+  global_heatmap_head --> interpolate_2
+  squeeze_1 --> getattr_9
+  getattr_9 --> getitem_20
+  squeeze_1 --> getattr_10
+  getattr_10 --> getitem_21
+  squeeze_1 --> view
+  getitem_20 --> view
+  getitem_21 --> view
+  view --> mul_17
+  _tensor_constant0 --> mul_17
+  mul_17 --> sum_6
+  sum_6 --> truediv_2
+  tile_mask_counts --> truediv_2
+  truediv_2 --> mul_18
+  valid_mask --> mul_18
+  interpolate_2 --> mul_19
+  mul_18 --> mul_20
+  mul_19 --> add_15
+  mul_20 --> add_15
+  add_15 --> sigmoid_1
+  sigmoid_1 --> mul_21
+  valid_mask --> mul_21
+  squeeze_3 --> output
+  defect_head --> output
+  mul_21 --> output

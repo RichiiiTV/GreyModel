@@ -2,7 +2,20 @@ from __future__ import annotations
 
 from dataclasses import is_dataclass
 
-from greymodel import ModelInput, ModelOutput, Sample, StationConfig
+from greymodel import (
+    BaseModel,
+    GreyInspectionDataset,
+    LiteModel,
+    ModelInput,
+    ModelOutput,
+    PreparedImage,
+    Sample,
+    StationConfig,
+    TensorBatch,
+    TileCoverage,
+    compute_tile_coverage,
+    preprocess_image,
+)
 
 
 def test_public_data_models_exist_and_are_dataclasses() -> None:
@@ -10,6 +23,9 @@ def test_public_data_models_exist_and_are_dataclasses() -> None:
     assert is_dataclass(ModelInput)
     assert is_dataclass(ModelOutput)
     assert is_dataclass(StationConfig)
+    assert is_dataclass(PreparedImage)
+    assert is_dataclass(TensorBatch)
+    assert is_dataclass(TileCoverage)
 
 
 def test_public_data_models_have_expected_fields() -> None:
@@ -44,3 +60,10 @@ def test_public_data_models_have_expected_fields() -> None:
     assert "adapter_id" in station_fields
     assert "reject_threshold" in station_fields
 
+
+def test_public_runtime_and_dataset_symbols_are_exported() -> None:
+    assert BaseModel is not None
+    assert LiteModel is not None
+    assert GreyInspectionDataset is not None
+    assert preprocess_image is not None
+    assert compute_tile_coverage is not None

@@ -1,125 +1,148 @@
-# GreyModel Architecture
+# GreyModel Architecture Walkthrough
 
-## System Goal
+## Overview
 
-Build a grayscale-native inspection system for syringe and vial images that can:
+`GreyModel` is built for visual inspection of syringes and vials where defect scale varies from a few pixels to the full frame. The architecture is intentionally hybrid:
 
-- Detect tiny local defects as small as `5x5` pixels.
-- Detect broad defects that span most or all of the image.
-- Run on both rectangular and square station formats.
-- Reuse one shared model family across stations.
-- Support a stronger `Base` configuration and a smaller `Lite` configuration with the same I/O contract.
+- A small-stride CNN stem keeps fine grayscale contrast alive.
+- A global transformer branch captures whole-object geometry and broad defects.
+- A local tiled branch preserves tiny defects and produces weak localization.
+- Station and geometry conditioning let one shared model work across square and rectangular stations.
 
-## Data Contract
+The model is not designed as a generic image classifier. It is built around inline inspection constraints, reproducible calibration, and auditability.
 
-### `Sample`
+## Data Flow
 
-Represents one training example.
+### 1. Input
 
-- `image_uint8`: single-channel `H x W` image in the range `0-255`.
-- `station_id`: station identifier used for calibration and geometry conditioning.
-- `product_family`: syringe, vial, or a more specific family if needed.
-- `geometry_mode`: rectangular or square station mode.
-- `accept_reject`: binary label.
-- `defect_tags`: optional multi-label defect family tags.
-- metadata: optional camera, lighting, batch, and capture details.
+The public input is a single `uint8` grayscale image plus station metadata:
 
-### `ModelInput`
+- `image_uint8`: `H x W`, values `0-255`.
+- `station_id`: used for station-specific conditioning and calibration.
+- `geometry_mode`: `rect` or `square`.
 
-Represents one inference request.
+### 2. Preprocessing
 
-- One grayscale image.
-- `station_id`.
-- `geometry_mode`.
+The preprocessing path preserves the image aspect ratio.
 
-### `ModelOutput`
+- Resize with aspect fit.
+- Pad to the station canvas.
+- Emit a valid-pixel mask.
+- Normalize only after padding.
 
-Represents one inference response.
+This matters because the model should not learn from distorted geometry, especially when the same model has to handle both rectangular and square stations.
 
-- `reject_score`.
-- `accept_reject_logit`.
-- `defect_family_probs`.
-- `defect_heatmap`.
-- `top_tiles`.
-- calibrated decision metadata.
+### 3. Shared Backbone
 
-### `StationConfig`
+The backbone is `GrayInspect-H`.
 
-Defines how a specific station is processed.
+- The CNN stem extracts early features without aggressive downsampling.
+- The global branch works on the padded frame to model fill level, container shape, scratches, cracks, and occlusions.
+- The local branch processes overlapping tiles to keep `5x5` defects visible.
+- The station-conditioning path modulates features with station and geometry embeddings.
 
-- Canvas and padding rule.
-- Normalization statistics.
-- Tile size and overlap.
-- Adapter identifier.
-- Decision thresholds.
+## Model Blocks
 
-## Model Shape
+### CNN Stem
 
-Use one hybrid architecture with three parts:
+The stem is deliberately small-stride.
 
-- A small-stride CNN stem to preserve fine local contrast.
-- A global hierarchical branch for whole-image geometry and large defects.
-- A tiled local-detail branch for tiny defects and weak localization.
+- It avoids destroying micro-defect evidence too early.
+- It produces feature maps that still retain local intensity differences.
+- It feeds both the local and global branches.
 
-Fuse local and global features before the final heads. Keep `station_id` conditioning outside the backbone via lightweight adapters or FiLM-style modulation.
+### Global Branch
 
-## Base and Lite
+The global branch is a hierarchical transformer over the padded frame.
 
-### `Base`
+- It captures long-range structure and full-image anomalies.
+- It uses relative positional bias so the same model can handle rectangular and square canvases.
+- It receives the valid-pixel mask to ignore padded regions.
 
-- Primary inline deployment model.
-- Higher capacity.
-- More tile overlap and stronger localization.
-- Intended for industrial GPU inference.
+### Local Branch
 
-### `Lite`
+The local branch runs on overlapping tiles.
 
-- Distilled from `Base`.
-- Smaller transformer depth and reduced tile overlap.
-- Intended for CPU fallback or constrained deployments.
-- Must keep the same public input and output contract.
+- It preserves small defects that would disappear in a global downsample.
+- It produces tile scores and tile embeddings.
+- It supports weak localization even when training labels are image-level only.
 
-## Training Plan
+### Fusion
 
-### Stage 1: Pretraining
+Local and global features are fused before the final heads.
 
-Train on large unlabeled grayscale industrial imagery using masked-image or self-supervised objectives.
+- A gating module balances local evidence against global context.
+- This is important when a defect is tiny but should still be judged in the context of the whole part.
+- The fused representation feeds the reject and defect-family heads.
 
-### Stage 2: Domain Adaptation
+### Heads
 
-Adapt on unlabeled syringe and vial production frames. Preserve image structure and station geometry.
+The framework exposes three main outputs.
 
-### Stage 3: Supervised Finetuning
+- `accept/reject` logit and score.
+- Multi-label defect family probabilities.
+- A weak heatmap for audit and later relabeling.
 
-Train on image-level accept/reject labels and optional defect-family tags. Use hard clean negatives and station-balanced batches.
+## Tiny Defect Preservation
 
-### Stage 4: Calibration
+The architecture is specifically tuned for tiny defects.
 
-Fit per-station thresholds and lightweight adapters on real production data. Avoid splitting into separate station backbones.
+- Use aspect-preserving preprocessing instead of rescaling into a fixed square.
+- Keep a valid mask so padding does not pollute feature learning.
+- Use overlapping tiles so a `5x5` defect is seen in more than one context window.
+- Avoid collapsing local and global evidence into a single pooled vector too early.
 
-## Weak Localization
+## Base And Lite
 
-The model should keep weak localization even if the primary label is image-level classification.
+### Base
 
-- Produce tile scores from overlapping local crops.
-- Aggregate tile scores into a heatmap.
-- Use the heatmap for auditability, hard-example mining, and future relabeling.
+- Higher-capacity model for industrial GPU inference.
+- More tile overlap.
+- Stronger local detail retention.
+- Best for the highest inline quality target.
 
-## Evaluation
+### Lite
 
-Track performance separately for:
+- Distilled or reduced-capacity model for constrained environments.
+- Lower overlap.
+- Smaller transformer depth.
+- Same public input and output contract as `Base`.
 
-- Tiny defects.
-- Medium defects.
-- Large or image-spanning defects.
-- Clean hard negatives.
+## Training Stages
 
-Recommended metrics include recall, false accept rate, false reject rate, AUROC, and station-separated validation splits.
+### Pretraining
 
-## Implementation Notes
+Pretrain on unlabeled grayscale industrial imagery with masked-image or self-supervised objectives.
 
-- Preserve 8-bit grayscale values until normalization.
-- Avoid aspect-ratio distortion when moving between rectangular and square stations.
-- Use masks for padded pixels.
-- Keep inference deterministic enough for inline QA and audit logging.
-- Treat patentability as a system-level combination of geometry-aware preprocessing, dual-scale inference, weak localization, and calibration.
+### Domain Adaptation
+
+Adapt on unlabeled production frames from the target line so the model learns station optics, motion, and background statistics.
+
+### Supervised Finetuning
+
+Finetune on image-level labels, with optional boxes or masks on curated hard cases.
+
+### Calibration
+
+Fit per-station thresholds and lightweight adapters without splitting into separate backbone models.
+
+## Explainability And Audit
+
+The architecture is meant to produce inspectable artifacts.
+
+- Tile scores for local evidence.
+- Heatmaps for weak localization.
+- Architecture graphs for model documentation.
+- Sample-level explanation bundles for QA and operator review.
+
+The committed graph exports are generated from a traceable adapter around the live PyTorch model so the architecture docs stay aligned with the implementation.
+
+- Base graph: `docs/graphs/base/model_graph.mmd`
+- Lite graph: `docs/graphs/lite/model_graph.mmd`
+- The graph exporter always writes Mermaid and JSON, and will add Graphviz DOT only when `dot` is available.
+
+## References For The Framework
+
+- Use `torch.fx` for graph tracing.
+- Use a modern PyTorch-compatible attribution library such as Captum for saliency and integrated gradients.
+- Treat the older CNN visualization repository as inspiration only, not as a runtime dependency.

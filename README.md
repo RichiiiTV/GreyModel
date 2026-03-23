@@ -1,94 +1,51 @@
 # GreyModel
 
-`GreyModel` is a greenfield Python package for grayscale syringe and vial inspection with one shared model family across rectangular and square stations.
+`GreyModel` is a grayscale inspection framework for syringe and vial defect detection. It is built around one shared model family that can run on rectangular and square stations, preserve tiny defects as small as `5x5` pixels, and keep the same public I/O contract between `Base` and `Lite`.
 
-The repo now includes:
+## What This Repo Contains
 
-- A public inference contract built around `Sample`, `ModelInput`, `ModelOutput`, and `StationConfig`.
-- Geometry-aware preprocessing that preserves aspect ratio, pads to a station canvas, and emits valid-pixel masks.
-- Tile-grid utilities that verify `5x5`-scale defect coverage.
-- A hybrid `GrayInspect-H` PyTorch architecture in `src/greymodel/models/` with:
-  - a small-stride CNN stem,
-  - a global transformer branch,
-  - a local tiled-detail branch,
-  - station and geometry conditioning,
-  - binary reject, defect-family, and weak-heatmap outputs.
-- `BaseModel` and `LiteModel` runtime wrappers with the same public I/O contract.
-- A NumPy fallback backend so the public API remains runnable before `torch` is installed.
-- Synthetic-defect helpers, calibration utilities, and training hooks for masked pretraining, domain adaptation, and supervised finetuning.
+- A hybrid `GrayInspect-H` backbone for grayscale `8-bit` images.
+- Geometry-aware preprocessing with pad masks instead of aspect distortion.
+- A dataset layer designed for folder-first ingestion with internal manifests.
+- Training, evaluation, calibration, and explainability hooks for finetuning.
+- Runtime wrappers with `Base` and `Lite` parity.
 
-## Project Layout
+## Start Here
 
-```text
-src/greymodel/
-  api.py              Public Base/Lite model wrappers
-  preprocessing.py    Aspect-safe grayscale preprocessing
-  tiling.py           Tile grids and coverage checks
-  synthetic.py        Synthetic defect injection helpers
-  calibration.py      Per-station calibration primitives
-  losses.py           Supervised and consistency losses
-  training.py         Pretraining and finetuning step helpers
-  models/             PyTorch GrayInspect-H implementation
-tests/                Public API and preprocessing contract tests
-docs/architecture.md  Architecture and training overview
-```
+- [Architecture Walkthrough](docs/architecture.md)
+- [Framework Guide](docs/framework.md)
+- [Base Graph](docs/graphs/base/model_graph.mmd)
+- [Lite Graph](docs/graphs/lite/model_graph.mmd)
+- [Contributor Rules](AGENTS.md)
 
-## Install
+## Public Contract
 
-Minimum local setup:
+The core public types are:
 
-```powershell
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install numpy pytest
-.venv\Scripts\python.exe -m pip install -e .
-```
+- `Sample` for labeled training examples.
+- `ModelInput` for single-image inference.
+- `ModelOutput` for reject score, defect family probabilities, and heatmaps.
+- `StationConfig` for station-specific canvas, tile, and calibration settings.
 
-For the PyTorch model path instead of the NumPy fallback:
+## Current Focus
 
-```powershell
-.venv\Scripts\python.exe -m pip install torch
-```
+This repo is organized around finetuning and inspection workflow, not only model definition.
 
-## Quick Check
+- Folder-first dataset import with internal manifest generation.
+- Station-separated splits to avoid leakage.
+- Weak localization through tile scores and heatmaps.
+- Architecture graph and per-sample explainability artifacts.
+- `train`, `eval`, `dataset`, and `explain` CLI entrypoints planned around the same contract.
 
-Run the current public test suite:
+## Runtime Expectations
 
-```powershell
-.venv\Scripts\python.exe -m pytest -q
-```
-
-## Example
-
-```python
-import numpy as np
-
-from greymodel import BaseModel, ModelInput, StationConfig
-
-station = StationConfig(
-    canvas_shape=(256, 704),
-    tile_size=32,
-    tile_stride=16,
-    adapter_id="rect-line-a",
-)
-
-request = ModelInput(
-    image_uint8=np.zeros((225, 652), dtype=np.uint8),
-    station_id="station-01",
-    geometry_mode="rect",
-)
-
-model = BaseModel(num_defect_families=6)
-output = model.forward(request, station)
-
-print(output.reject_score)
-print(output.defect_family_probs.shape)
-print(output.defect_heatmap.shape)
-print(output.top_tiles.shape)
-```
+- `Base` is the inline production configuration for industrial GPU inference.
+- `Lite` keeps the same contract with reduced overlap and smaller capacity for CPU-constrained deployment.
+- Both should operate on the same grayscale image contract and station metadata.
 
 ## Notes
 
-- `BaseModel` is the higher-capacity inline configuration.
-- `LiteModel` keeps the same contract with reduced overlap and smaller capacity for CPU-oriented fallback.
-- Without `torch`, the wrappers use a deterministic NumPy fallback for contract testing and scaffolding.
-- Patentability still depends on prior-art review and counsel; this repo only implements the technical system.
+- Preserve 8-bit grayscale values until normalization.
+- Avoid aspect-ratio distortion when moving between rectangular and square stations.
+- Treat patentability as a system-level property of geometry-aware preprocessing, dual-scale inference, weak localization, and calibration.
+- The framework CLI entrypoint is `greymodel`, with `dataset`, `train`, `eval`, and `explain` command groups.

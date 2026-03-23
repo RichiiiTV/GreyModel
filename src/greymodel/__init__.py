@@ -2,30 +2,108 @@
 
 from .api import BaseModel, LiteModel
 from .calibration import CalibratedStationDecision, StationCalibration, StationCalibrator
-from .data import GreyInspectionDataset, collate_batch, group_samples_by_station
+from .cli import cli_main
+from .data import (
+    GreyInspectionDataset,
+    ManifestInspectionDataset,
+    StationBalancedManifestSampler,
+    build_dataset_manifest,
+    build_dataset_splits,
+    build_dataset_ontology,
+    build_hard_negative_subset,
+    collate_batch,
+    group_samples_by_station,
+    ingest_dataset_manifest,
+    infer_station_configs,
+    load_dataset_index,
+    load_dataset_manifest,
+    register_synthetic_recipe,
+    validate_dataset_manifest,
+)
+from .evaluation import benchmark_manifest, build_calibration_report, evaluate_predictions, predict_dataset
+from .explainability import build_audit_report, build_explanation_bundle
+from .graphing import export_model_graph
 from .preprocessing import PreparedImage, preprocess_image, preprocess_sample, stack_prepared_images
+from .runners import (
+    StageResult,
+    run_benchmark_stage,
+    run_calibration_stage,
+    run_domain_adaptation_stage,
+    run_finetune_stage,
+    run_pretraining_stage,
+    run_resume_stage,
+)
 from .synthetic import DefectInjection, inject_defect, inject_particle, inject_scratch, inject_streak
 from .tiling import TileCoverage, TileGrid, build_tile_grid, compute_tile_coverage, verify_defect_coverage
-from .types import GeometryMode, ModelInput, ModelOutput, Sample, StationConfig, TensorBatch, TopTilePrediction
+from .tracking import RunContext, create_run_context, log_metrics, snapshot_manifest, snapshot_run_config
+from .types import (
+    BoxAnnotation,
+    DatasetIndex,
+    DatasetRecord,
+    GeometryMode,
+    ModelInput,
+    ModelOutput,
+    PredictionRecord,
+    Sample,
+    StationConfig,
+    TensorBatch,
+    TopTilePrediction,
+)
 
 __all__ = [
     "BaseModel",
+    "BoxAnnotation",
+    "build_audit_report",
+    "benchmark_manifest",
+    "build_calibration_report",
+    "build_dataset_manifest",
+    "build_dataset_ontology",
+    "build_dataset_splits",
+    "build_explanation_bundle",
+    "build_hard_negative_subset",
+    "cli_main",
     "CalibratedStationDecision",
+    "create_run_context",
     "DefectInjection",
+    "DatasetIndex",
+    "DatasetRecord",
+    "evaluate_predictions",
+    "export_model_graph",
     "GeometryMode",
     "GreyInspectionDataset",
+    "ingest_dataset_manifest",
+    "infer_station_configs",
     "LiteModel",
+    "load_dataset_index",
+    "load_dataset_manifest",
+    "log_metrics",
+    "ManifestInspectionDataset",
     "ModelInput",
     "ModelOutput",
     "PreparedImage",
+    "PredictionRecord",
+    "predict_dataset",
+    "register_synthetic_recipe",
+    "RunContext",
+    "run_benchmark_stage",
+    "run_calibration_stage",
+    "run_domain_adaptation_stage",
+    "run_finetune_stage",
+    "run_pretraining_stage",
+    "run_resume_stage",
     "Sample",
+    "snapshot_manifest",
+    "snapshot_run_config",
+    "StageResult",
     "StationCalibration",
     "StationCalibrator",
     "StationConfig",
+    "StationBalancedManifestSampler",
     "TensorBatch",
     "TileCoverage",
     "TileGrid",
     "TopTilePrediction",
+    "validate_dataset_manifest",
     "build_tile_grid",
     "collate_batch",
     "compute_tile_coverage",

@@ -16,10 +16,23 @@ dependencies = [
   "numpy>=1.21,<3"
 ]
 
+[project.scripts]
+greymodel = "greymodel.cli:cli_main"
+
 [project.optional-dependencies]
 train = [
   "torch>=2.0",
   "pytest>=7.0"
+]
+xai = [
+  "captum>=0.7",
+  "Pillow>=9.0"
+]
+framework = [
+  "torch>=2.0",
+  "pytest>=7.0",
+  "captum>=0.7",
+  "Pillow>=9.0"
 ]
 
 [tool.setuptools]
