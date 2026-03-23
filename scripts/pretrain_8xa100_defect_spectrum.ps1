@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
+$env:PYTHONPATH = "$RepoRoot\src" + $(if ($env:PYTHONPATH) { ";$env:PYTHONPATH" } else { "" })
 
 $PythonBin = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } else { "python" }
 $TorchrunBin = if (Test-Path ".venv\Scripts\torchrun.exe") { ".venv\Scripts\torchrun.exe" } else { "torchrun" }

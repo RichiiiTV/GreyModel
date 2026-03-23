@@ -10,7 +10,7 @@
 #SBATCH --error=logs/%x-%j.err
 
 # Equivalent cluster-specific submit pattern when your scheduler uses wrap syntax:
-# sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && bash scripts/pretrain_8xa100_defect_spectrum.sh"
+# sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && export PYTHONPATH=$PWD/src && bash scripts/pretrain_8xa100_defect_spectrum.sh"
 
 set -euo pipefail
 
@@ -19,6 +19,7 @@ cd "${REPO_ROOT}"
 
 mkdir -p logs
 
+export PYTHONPATH="${REPO_ROOT}/src${PYTHONPATH+:${PYTHONPATH}}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-${SLURM_CPUS_PER_TASK:-8}}"
 export HF_HOME="${HF_HOME:-${REPO_ROOT}/.cache/huggingface}"
 export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-${HF_HOME}/datasets}"

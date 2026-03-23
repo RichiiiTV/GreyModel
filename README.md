@@ -54,6 +54,7 @@ This repo is organized around finetuning and inspection workflow, not only model
 - Avoid aspect-ratio distortion when moving between rectangular and square stations.
 - Treat patentability as a system-level property of geometry-aware preprocessing, dual-scale inference, weak localization, and calibration.
 - The framework CLI entrypoint is `greymodel`, with `dataset`, `train`, `eval`, and `explain` command groups.
+- From a source checkout, `python -m greymodel ...` works directly from the repo root without needing `PYTHONPATH=src`.
 - Example production pretraining invocation:
 ```bash
 torchrun --nproc_per_node=4 -m greymodel train pretrain --manifest /path/to/manifest.jsonl --index /path/to/dataset_index.json --run-root artifacts

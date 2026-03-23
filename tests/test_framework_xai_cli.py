@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 import sys
 import types
 
@@ -122,6 +123,35 @@ def test_cli_can_build_huggingface_manifest_bundle(tmp_path: Path, monkeypatch: 
 
     assert (output_dir / "manifest.jsonl").exists()
     assert (output_dir / "dataset_index.json").exists()
+
+
+def test_source_checkout_supports_python_m_greymodel_without_editable_install_pathing() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = (
+        "import greymodel; "
+        "from pathlib import Path; "
+        "print(Path(greymodel.__file__).resolve())"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    imported_path = Path(result.stdout.strip())
+    assert imported_path == repo_root / "src" / "greymodel" / "__init__.py"
+
+    help_result = subprocess.run(
+        [sys.executable, "-m", "greymodel", "--help"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert "GreyModel finetuning framework CLI." in help_result.stdout
 
 
 def test_model_output_contract_still_has_top_tiles_and_heatmap() -> None:
