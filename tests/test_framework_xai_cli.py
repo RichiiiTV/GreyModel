@@ -58,6 +58,7 @@ def _build_manifest(root: Path) -> Path:
 
 def _install_fake_hf_module(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_module = types.ModuleType("datasets")
+    fake_module.DownloadConfig = lambda **kwargs: types.SimpleNamespace(**kwargs)
     fake_module.load_dataset = lambda *args, **kwargs: {
         "train": [{"image": np.zeros((12, 12), dtype=np.uint8), "sample_id": "hf-train-001"}],
         "validation": [{"image": np.full((12, 12), 255, dtype=np.uint8), "sample_id": "hf-val-001"}],

@@ -149,6 +149,10 @@ def build_parser() -> argparse.ArgumentParser:
     dataset_build_hf.add_argument("--geometry-mode-column", default=None)
     dataset_build_hf.add_argument("--metadata-column", action="append", dest="metadata_columns", default=None)
     dataset_build_hf.add_argument("--allow-rgb-conversion", action="store_true")
+    dataset_build_hf.add_argument("--token", default=None)
+    dataset_build_hf.add_argument("--local-files-only", action="store_true")
+    dataset_build_hf.add_argument("--max-retries", type=int, default=4)
+    dataset_build_hf.add_argument("--retry-backoff-seconds", type=float, default=5.0)
     dataset_build_hf.set_defaults(func=_cmd_dataset_build_hf)
 
     dataset_validate = dataset_sub.add_parser("validate", help="Validate a manifest.")
@@ -268,6 +272,10 @@ def _cmd_dataset_build_hf(args: argparse.Namespace):
         geometry_mode_column=args.geometry_mode_column,
         metadata_columns=tuple(args.metadata_columns or ()),
         strict_grayscale=not bool(args.allow_rgb_conversion),
+        token=args.token,
+        local_files_only=bool(args.local_files_only),
+        max_retries=args.max_retries,
+        retry_backoff_seconds=args.retry_backoff_seconds,
     )
 
 

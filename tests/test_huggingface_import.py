@@ -96,6 +96,7 @@ def _install_fake_datasets_module(monkeypatch: pytest.MonkeyPatch):
     rows_by_split = _make_rows()
     calls: list[dict[str, object]] = []
     fake_module = types.ModuleType("datasets")
+    fake_module.DownloadConfig = lambda **kwargs: types.SimpleNamespace(**kwargs)
 
     def _load_dataset(*args, **kwargs):
         calls.append({"args": args, "kwargs": kwargs})
@@ -245,6 +246,49 @@ def test_huggingface_import_accepts_data_dir_and_record_limit(tmp_path: Path, mo
     assert len(records) == 2
     assert calls
     assert all(call["kwargs"].get("data_dir") == "DS-DAGM/image" for call in calls)
+
+
+def test_huggingface_import_retries_http_429_and_uses_token_and_cache_controls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows_by_split = _make_rows()
+    calls: list[dict[str, object]] = []
+    fake_module = types.ModuleType("datasets")
+    fake_module.DownloadConfig = lambda **kwargs: types.SimpleNamespace(**kwargs)
+
+    def _load_dataset(*args, **kwargs):
+        calls.append({"args": args, "kwargs": kwargs})
+        if len(calls) == 1:
+            raise RuntimeError("HTTP Error 429: Too Many Requests")
+        return rows_by_split
+
+    fake_module.load_dataset = _load_dataset
+    monkeypatch.setitem(sys.modules, "datasets", fake_module)
+    monkeypatch.setenv("HF_TOKEN", "hf_test_token")
+    monkeypatch.setattr("greymodel.data.time.sleep", lambda *_args, **_kwargs: None)
+
+    importer = _resolve_importer()
+    if importer is None:
+        pytest.xfail("Hugging Face import path is not exposed yet.")
+
+    output_dir = tmp_path / "hf_retry_import"
+    result = importer(
+        dataset_name="fake/public-grayscale",
+        output_dir=output_dir,
+        strict_grayscale=False,
+        local_files_only=True,
+        max_retries=2,
+        retry_backoff_seconds=0.01,
+    )
+    manifest_path = _materialize_output_path(result)
+    records = load_dataset_manifest(manifest_path)
+
+    assert manifest_path.exists()
+    assert len(records) == 4
+    assert len(calls) == 2
+    assert calls[0]["kwargs"]["token"] == "hf_test_token"
+    assert calls[0]["kwargs"]["download_config"].local_files_only is True
+    assert calls[0]["kwargs"]["download_config"].max_retries == 2
 
 
 def test_pretrained_hf_checkpoint_can_finetune_production_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

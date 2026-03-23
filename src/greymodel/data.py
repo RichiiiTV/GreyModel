@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict
 import io
+import os
 from pathlib import Path
 import re
+import time
 from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
@@ -42,12 +44,86 @@ def _require_torch():
 
 def _require_huggingface_datasets():
     try:
-        from datasets import load_dataset
+        import datasets as datasets_module
     except ImportError as exc:
         raise ImportError(
             "Hugging Face datasets support requires the `datasets` package. Install `greymodel[framework]` or add `datasets`."
         ) from exc
-    return load_dataset
+    return datasets_module.load_dataset, getattr(datasets_module, "DownloadConfig", None)
+
+
+def _resolve_huggingface_token(explicit_token: Optional[str]) -> Optional[str]:
+    if explicit_token not in (None, ""):
+        return str(explicit_token)
+    for env_name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN"):
+        env_value = os.getenv(env_name)
+        if env_value not in (None, ""):
+            return str(env_value)
+    return None
+
+
+def _is_huggingface_rate_limit_error(exc: BaseException) -> bool:
+    message = ("%s: %s" % (type(exc).__name__, exc)).lower()
+    return (
+        "429" in message
+        or "too many requests" in message
+        or "rate limit" in message
+        or "ratelimit" in message
+    )
+
+
+def _load_huggingface_dataset(
+    dataset_name: str,
+    *,
+    config_name: Optional[str] = None,
+    split: Optional[str] = None,
+    cache_dir: Optional[Path | str] = None,
+    data_dir: Optional[str] = None,
+    token: Optional[str] = None,
+    local_files_only: bool = False,
+    max_retries: int = 4,
+    retry_backoff_seconds: float = 5.0,
+):
+    load_dataset, download_config_cls = _require_huggingface_datasets()
+    cache_dir_value = str(cache_dir) if cache_dir is not None else None
+    resolved_token = _resolve_huggingface_token(token)
+    resolved_max_retries = max(int(max_retries), 1)
+    resolved_backoff = max(float(retry_backoff_seconds), 0.0)
+
+    load_kwargs = {
+        "path": dataset_name,
+        "name": config_name,
+        "split": split,
+        "cache_dir": cache_dir_value,
+        "data_dir": data_dir,
+    }
+    if resolved_token is not None:
+        load_kwargs["token"] = resolved_token
+    if download_config_cls is not None:
+        load_kwargs["download_config"] = download_config_cls(
+            cache_dir=cache_dir_value,
+            local_files_only=bool(local_files_only),
+            max_retries=resolved_max_retries,
+            token=resolved_token,
+        )
+
+    for attempt_index in range(resolved_max_retries):
+        try:
+            return load_dataset(**load_kwargs)
+        except Exception as exc:
+            is_rate_limit = _is_huggingface_rate_limit_error(exc)
+            is_last_attempt = attempt_index + 1 >= resolved_max_retries
+            if not is_rate_limit or is_last_attempt:
+                if is_rate_limit:
+                    raise RuntimeError(
+                        "Hugging Face returned HTTP 429 while loading %s after %d attempt(s). "
+                        "Set HF_TOKEN or pass --token, reuse --cache-dir, or rerun with --local-files-only after the cache is warm."
+                        % (dataset_name, attempt_index + 1)
+                    ) from exc
+                raise
+            sleep_seconds = resolved_backoff * (2 ** attempt_index)
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
 
 
 def station_config_key(station_id: Any, geometry_mode: GeometryMode) -> str:
@@ -209,24 +285,39 @@ def _resolve_huggingface_splits(
     split_names: Optional[Sequence[str]] = None,
     cache_dir: Optional[Path | str] = None,
     data_dir: Optional[str] = None,
+    token: Optional[str] = None,
+    local_files_only: bool = False,
+    max_retries: int = 4,
+    retry_backoff_seconds: float = 5.0,
 ):
-    load_dataset = _require_huggingface_datasets()
-    cache_dir_value = str(cache_dir) if cache_dir is not None else None
     if split_names:
         return [
             (
                 str(split_name),
-                load_dataset(
-                    path=dataset_name,
-                    name=config_name,
+                _load_huggingface_dataset(
+                    dataset_name,
+                    config_name=config_name,
                     split=str(split_name),
-                    cache_dir=cache_dir_value,
+                    cache_dir=cache_dir,
                     data_dir=data_dir,
+                    token=token,
+                    local_files_only=local_files_only,
+                    max_retries=max_retries,
+                    retry_backoff_seconds=retry_backoff_seconds,
                 ),
             )
             for split_name in split_names
         ]
-    dataset_bundle = load_dataset(path=dataset_name, name=config_name, cache_dir=cache_dir_value, data_dir=data_dir)
+    dataset_bundle = _load_huggingface_dataset(
+        dataset_name,
+        config_name=config_name,
+        cache_dir=cache_dir,
+        data_dir=data_dir,
+        token=token,
+        local_files_only=local_files_only,
+        max_retries=max_retries,
+        retry_backoff_seconds=retry_backoff_seconds,
+    )
     if hasattr(dataset_bundle, "items"):
         return [(str(split_name), split_dataset) for split_name, split_dataset in dataset_bundle.items()]
     return [("train", dataset_bundle)]
@@ -742,6 +833,10 @@ def build_huggingface_dataset_manifest(
     geometry_mode_column: Optional[str] = None,
     metadata_columns: Sequence[str] = (),
     strict_grayscale: bool = True,
+    token: Optional[str] = None,
+    local_files_only: bool = False,
+    max_retries: int = 4,
+    retry_backoff_seconds: float = 5.0,
 ) -> DatasetIndex:
     output_dir = ensure_dir(Path(output_dir))
     materialized_root = ensure_dir(output_dir / "images")
@@ -753,6 +848,10 @@ def build_huggingface_dataset_manifest(
         split_names=split_names,
         cache_dir=cache_dir,
         data_dir=data_dir,
+        token=token,
+        local_files_only=local_files_only,
+        max_retries=max_retries,
+        retry_backoff_seconds=retry_backoff_seconds,
     )
     if not resolved_splits:
         raise ValueError("No Hugging Face splits were resolved for %s." % dataset_name)
@@ -858,6 +957,8 @@ def build_huggingface_dataset_manifest(
             "strict_grayscale": bool(strict_grayscale),
             "max_records": max_records,
             "metadata_columns": list(metadata_columns),
+            "local_files_only": bool(local_files_only),
+            "max_retries": int(max_retries),
         },
     )
     save_dataset_index(index, index_path)

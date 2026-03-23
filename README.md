@@ -67,6 +67,7 @@ torchrun --nproc_per_node=4 -m greymodel train pretrain --manifest /path/to/mani
 greymodel dataset build-hf --dataset-name <hf-dataset> --output-dir data/public_pretrain --split train --split validation
 ```
 If the source is not strictly grayscale but you still want to use it, replace the last flag with `--allow-rgb-conversion`.
+If Hugging Face rate-limits the download, set `HF_TOKEN` or pass `--token`, keep `--cache-dir` stable, and rerun with `--local-files-only` once the cache is warm. The importer now retries HTTP `429` responses with exponential backoff.
 
 2. Launch multi-GPU pretraining from the imported manifest:
 ```bash
