@@ -20,7 +20,14 @@ from greymodel import (
     run_resume_stage,
 )
 from greymodel.data import save_dataset_manifest
-from greymodel.runners import DistributedContext, _collate_for_training, _create_progress_bar, _move_training_batch_to_device
+from greymodel.runners import (
+    DistributedContext,
+    _collate_for_training,
+    _create_progress_bar,
+    _move_training_batch_to_device,
+    _stage_uses_partial_backbone,
+    _wrap_modules_for_ddp,
+)
 
 
 def _write_sample(root: Path, relative_path: str, image: np.ndarray, sidecar: dict | None = None) -> Path:
@@ -154,6 +161,33 @@ def test_progress_bar_is_optional_and_rank_safe(monkeypatch: pytest.MonkeyPatch)
         desc="hidden",
     )
     assert disabled is None
+
+
+def test_partial_backbone_stages_enable_find_unused_parameters_in_ddp(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapped_kwargs = []
+
+    class _FakeDDP:
+        def __init__(self, module, **kwargs):
+            self.module = module
+            wrapped_kwargs.append(kwargs)
+
+    monkeypatch.setattr(
+        "greymodel.runners._require_torch",
+        lambda: (torch, None, _FakeDDP, None),
+    )
+    context = DistributedContext(enabled=True, rank=0, world_size=2, local_rank=0, device=torch.device("cpu"), backend="gloo")
+    backbone = torch.nn.Linear(4, 4)
+    auxiliary = {"reconstruction_head": torch.nn.Linear(4, 1)}
+
+    wrapped_backbone, wrapped_aux = _wrap_modules_for_ddp(backbone, auxiliary, context, stage="pretrain")
+
+    assert isinstance(wrapped_backbone, _FakeDDP)
+    assert isinstance(wrapped_aux["reconstruction_head"], _FakeDDP)
+    assert wrapped_kwargs
+    assert all(kwargs.get("find_unused_parameters") is True for kwargs in wrapped_kwargs)
+    assert _stage_uses_partial_backbone("pretrain") is True
+    assert _stage_uses_partial_backbone("domain_adapt") is True
+    assert _stage_uses_partial_backbone("finetune") is False
 
 
 def test_pretraining_stage_writes_checkpoint_and_metrics(tmp_path: Path) -> None:

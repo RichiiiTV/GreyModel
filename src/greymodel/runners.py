@@ -347,19 +347,24 @@ def _move_modules_to_device(backbone, auxiliary_modules: Mapping[str, Any], devi
     return backbone, moved_auxiliary
 
 
-def _wrap_modules_for_ddp(backbone, auxiliary_modules: Mapping[str, Any], context: DistributedContext):
+def _stage_uses_partial_backbone(stage: str) -> bool:
+    return stage in {"pretrain", "domain_adapt"}
+
+
+def _wrap_modules_for_ddp(backbone, auxiliary_modules: Mapping[str, Any], context: DistributedContext, stage: str):
     _, _, DDP, _ = _require_torch()
     if not context.enabled:
         return backbone, dict(auxiliary_modules)
+    ddp_kwargs = {"find_unused_parameters": _stage_uses_partial_backbone(stage)}
     if getattr(context.device, "type", "cpu") == "cuda":
-        backbone = DDP(backbone, device_ids=[context.local_rank], output_device=context.local_rank)
+        backbone = DDP(backbone, device_ids=[context.local_rank], output_device=context.local_rank, **ddp_kwargs)
         wrapped_auxiliary = {
-            name: DDP(module, device_ids=[context.local_rank], output_device=context.local_rank)
+            name: DDP(module, device_ids=[context.local_rank], output_device=context.local_rank, **ddp_kwargs)
             for name, module in auxiliary_modules.items()
         }
     else:
-        backbone = DDP(backbone)
-        wrapped_auxiliary = {name: DDP(module) for name, module in auxiliary_modules.items()}
+        backbone = DDP(backbone, **ddp_kwargs)
+        wrapped_auxiliary = {name: DDP(module, **ddp_kwargs) for name, module in auxiliary_modules.items()}
     return backbone, wrapped_auxiliary
 
 
@@ -609,7 +614,7 @@ def _run_training_loop(
         total_optimizer_steps = max(1, training_config.epochs * total_optimizer_steps_per_epoch)
         backbone, auxiliary_modules = _build_modules(stage, variant, defect_families)
         backbone, auxiliary_modules = _move_modules_to_device(backbone, auxiliary_modules, distributed_context.device)
-        backbone, auxiliary_modules = _wrap_modules_for_ddp(backbone, auxiliary_modules, distributed_context)
+        backbone, auxiliary_modules = _wrap_modules_for_ddp(backbone, auxiliary_modules, distributed_context, stage=stage)
         optimizer, scheduler = _optimizer_and_scheduler(backbone, auxiliary_modules, training_config, total_optimizer_steps)
         scaler = build_grad_scaler(training_config, distributed_context.device)
 
