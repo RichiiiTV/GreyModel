@@ -153,6 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
     dataset_build_hf.add_argument("--local-files-only", action="store_true")
     dataset_build_hf.add_argument("--max-retries", type=int, default=4)
     dataset_build_hf.add_argument("--retry-backoff-seconds", type=float, default=5.0)
+    dataset_build_hf.add_argument("--no-shape-bucketed-stations", action="store_true")
     dataset_build_hf.set_defaults(func=_cmd_dataset_build_hf)
 
     dataset_validate = dataset_sub.add_parser("validate", help="Validate a manifest.")
@@ -276,6 +277,7 @@ def _cmd_dataset_build_hf(args: argparse.Namespace):
         local_files_only=bool(args.local_files_only),
         max_retries=args.max_retries,
         retry_backoff_seconds=args.retry_backoff_seconds,
+        shape_bucketed_stations=not bool(args.no_shape_bucketed_stations),
     )
 
 

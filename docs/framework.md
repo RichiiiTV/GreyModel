@@ -21,6 +21,7 @@ Pretraining can also start from a public Hugging Face image dataset, but the fra
 - Enforce grayscale by default so pretraining does not silently drift into an RGB workflow.
 - Materialize local `.npy` images and reuse the same `manifest.jsonl` and `dataset_index.json` contracts as folder imports.
 - If the remote dataset is rate-limited, prefer a token-backed import with a stable cache directory and switch to local-cache-only replays once the cache is populated.
+- Mixed-resolution public imports should be grouped into pseudo-stations by image shape so inferred canvas sizes stay bounded during pretraining.
 
 ### Internal Artifacts
 

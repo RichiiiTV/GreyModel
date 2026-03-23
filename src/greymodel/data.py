@@ -232,6 +232,10 @@ def _resolve_huggingface_geometry_mode(
     return GeometryMode.SQUARE if int(image_shape[0]) == int(image_shape[1]) else GeometryMode.RECT
 
 
+def _huggingface_shape_bucket_station_id(base_station_id: Any, geometry_mode: GeometryMode, image_shape: Tuple[int, int]) -> str:
+    return "%s-%s-%dx%d" % (base_station_id, geometry_mode.value, int(image_shape[0]), int(image_shape[1]))
+
+
 def _resolve_huggingface_accept_reject(row: Mapping[str, Any], accept_reject_column: Optional[str]) -> int:
     value = _row_column(row, accept_reject_column)
     if value in (None, "", []):
@@ -837,6 +841,7 @@ def build_huggingface_dataset_manifest(
     local_files_only: bool = False,
     max_retries: int = 4,
     retry_backoff_seconds: float = 5.0,
+    shape_bucketed_stations: bool = True,
 ) -> DatasetIndex:
     output_dir = ensure_dir(Path(output_dir))
     materialized_root = ensure_dir(output_dir / "images")
@@ -880,9 +885,17 @@ def build_huggingface_dataset_manifest(
                 geometry_mode=geometry_mode,
                 geometry_mode_column=auto_geometry_column,
             )
-            resolved_station_id = _row_column(row, auto_station_column, station_id)
-            if auto_station_column is None and geometry_mode == "auto":
-                resolved_station_id = "%s-%s" % (resolved_station_id, resolved_geometry_mode.value)
+            base_station_id = _row_column(row, auto_station_column, station_id)
+            resolved_station_id = base_station_id
+            if auto_station_column is None:
+                if shape_bucketed_stations:
+                    resolved_station_id = _huggingface_shape_bucket_station_id(
+                        base_station_id,
+                        resolved_geometry_mode,
+                        image.shape,
+                    )
+                elif geometry_mode == "auto":
+                    resolved_station_id = "%s-%s" % (resolved_station_id, resolved_geometry_mode.value)
             resolved_product_family = str(_row_column(row, auto_product_column, product_family))
             base_capture_metadata = _sanitize_metadata_value(row.get("capture_metadata", {}))
             if not isinstance(base_capture_metadata, Mapping):
@@ -894,6 +907,8 @@ def build_huggingface_dataset_manifest(
                 "hf_config_name": config_name,
                 "hf_original_split": str(original_split_name),
                 "hf_row_index": int(row_index),
+                "hf_base_station_id": str(base_station_id),
+                "hf_shape_bucket": "%dx%d" % (int(image.shape[0]), int(image.shape[1])),
             }
             for column_name in metadata_columns:
                 if column_name in row:
@@ -959,6 +974,7 @@ def build_huggingface_dataset_manifest(
             "metadata_columns": list(metadata_columns),
             "local_files_only": bool(local_files_only),
             "max_retries": int(max_retries),
+            "shape_bucketed_stations": bool(shape_bucketed_stations),
         },
     )
     save_dataset_index(index, index_path)

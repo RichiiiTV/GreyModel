@@ -248,6 +248,39 @@ def test_huggingface_import_accepts_data_dir_and_record_limit(tmp_path: Path, mo
     assert all(call["kwargs"].get("data_dir") == "DS-DAGM/image" for call in calls)
 
 
+def test_huggingface_import_shape_buckets_station_configs_for_mixed_resolution_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows_by_split = {
+        "train": _FakeSplit(
+            [
+                {"image": _FakeImage(np.zeros((64, 64), dtype=np.uint8)), "sample_id": "hf-001"},
+                {"image": _FakeImage(np.zeros((512, 512), dtype=np.uint8)), "sample_id": "hf-002"},
+            ]
+        )
+    }
+    fake_module = types.ModuleType("datasets")
+    fake_module.DownloadConfig = lambda **kwargs: types.SimpleNamespace(**kwargs)
+    fake_module.load_dataset = lambda *args, **kwargs: rows_by_split
+    monkeypatch.setitem(sys.modules, "datasets", fake_module)
+
+    importer = _resolve_importer()
+    if importer is None:
+        pytest.xfail("Hugging Face import path is not exposed yet.")
+
+    output_dir = tmp_path / "hf_bucketed_import"
+    result = importer(dataset_name="fake/mixed-res", output_dir=output_dir)
+    manifest_path = _materialize_output_path(result)
+    records = load_dataset_manifest(manifest_path)
+    index = __import__("greymodel").load_dataset_index(manifest_path.with_name("dataset_index.json"))
+
+    assert len(records) == 2
+    assert len(index.station_configs) == 2
+    canvas_shapes = {tuple(config["canvas_shape"]) for config in index.station_configs.values()}
+    assert canvas_shapes == {(64, 64), (512, 512)}
+    assert len({record.station_id for record in records}) == 2
+
+
 def test_huggingface_import_retries_http_429_and_uses_token_and_cache_controls(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
