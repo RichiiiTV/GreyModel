@@ -127,7 +127,15 @@ def _resolve_importer():
     return None
 
 
-def _call_importer(importer, *, dataset_name: str, output_dir: Path, split: str | None = None):
+def _call_importer(
+    importer,
+    *,
+    dataset_name: str,
+    output_dir: Path,
+    split: str | None = None,
+    data_dir: str | None = None,
+    max_records: int | None = None,
+):
     signature = inspect.signature(importer)
     kwargs = {
         "dataset_name": dataset_name,
@@ -138,6 +146,8 @@ def _call_importer(importer, *, dataset_name: str, output_dir: Path, split: str 
         "output_path": output_dir,
         "split": split,
         "splits": ("train", "validation", "test"),
+        "data_dir": data_dir,
+        "max_records": max_records,
         "source_dataset": "huggingface_public",
         "strict_grayscale": False,
     }
@@ -213,6 +223,28 @@ def test_huggingface_import_materializes_manifest_and_preserves_split(tmp_path: 
     assert any(call["args"] or call["kwargs"] for call in calls)
     assert all(load_uint8_grayscale(Path(record.image_path)).ndim == 2 for record in records)
     assert all(load_uint8_grayscale(Path(record.image_path)).dtype == np.uint8 for record in records)
+
+
+def test_huggingface_import_accepts_data_dir_and_record_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, calls = _install_fake_datasets_module(monkeypatch)
+    importer = _resolve_importer()
+    if importer is None:
+        pytest.xfail("Hugging Face import path is not exposed yet.")
+
+    output_dir = tmp_path / "hf_import"
+    result = _call_importer(
+        importer,
+        dataset_name="fake/public-grayscale",
+        output_dir=output_dir,
+        data_dir="DS-DAGM/image",
+        max_records=2,
+    )
+    manifest_path = _materialize_output_path(result)
+    records = load_dataset_manifest(manifest_path)
+
+    assert len(records) == 2
+    assert calls
+    assert all(call["kwargs"].get("data_dir") == "DS-DAGM/image" for call in calls)
 
 
 def test_pretrained_hf_checkpoint_can_finetune_production_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

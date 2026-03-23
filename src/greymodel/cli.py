@@ -131,6 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
     dataset_build_hf.add_argument("--dataset-name", required=True)
     dataset_build_hf.add_argument("--output-dir", required=True)
     dataset_build_hf.add_argument("--config-name", default=None)
+    dataset_build_hf.add_argument("--data-dir", default=None)
     dataset_build_hf.add_argument("--split", action="append", dest="splits", default=None)
     dataset_build_hf.add_argument("--image-column", default="image")
     dataset_build_hf.add_argument("--station-id", default="hf-public")
@@ -138,6 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     dataset_build_hf.add_argument("--geometry-mode", choices=("auto", "rect", "square"), default="auto")
     dataset_build_hf.add_argument("--source-dataset", default=None)
     dataset_build_hf.add_argument("--cache-dir", default=None)
+    dataset_build_hf.add_argument("--max-records", type=int, default=None)
     dataset_build_hf.add_argument("--accept-reject-column", default=None)
     dataset_build_hf.add_argument("--defect-tags-column", default=None)
     dataset_build_hf.add_argument("--station-id-column", default=None)
@@ -249,12 +251,14 @@ def _cmd_dataset_build_hf(args: argparse.Namespace):
         output_dir=args.output_dir,
         config_name=args.config_name,
         split_names=args.splits,
+        data_dir=args.data_dir,
         image_column=args.image_column,
         station_id=args.station_id,
         product_family=args.product_family,
         geometry_mode=args.geometry_mode,
         source_dataset=args.source_dataset,
         cache_dir=args.cache_dir,
+        max_records=args.max_records,
         accept_reject_column=args.accept_reject_column,
         defect_tags_column=args.defect_tags_column,
         station_id_column=args.station_id_column,

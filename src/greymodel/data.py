@@ -208,15 +208,25 @@ def _resolve_huggingface_splits(
     config_name: Optional[str] = None,
     split_names: Optional[Sequence[str]] = None,
     cache_dir: Optional[Path | str] = None,
+    data_dir: Optional[str] = None,
 ):
     load_dataset = _require_huggingface_datasets()
     cache_dir_value = str(cache_dir) if cache_dir is not None else None
     if split_names:
         return [
-            (str(split_name), load_dataset(path=dataset_name, name=config_name, split=str(split_name), cache_dir=cache_dir_value))
+            (
+                str(split_name),
+                load_dataset(
+                    path=dataset_name,
+                    name=config_name,
+                    split=str(split_name),
+                    cache_dir=cache_dir_value,
+                    data_dir=data_dir,
+                ),
+            )
             for split_name in split_names
         ]
-    dataset_bundle = load_dataset(path=dataset_name, name=config_name, cache_dir=cache_dir_value)
+    dataset_bundle = load_dataset(path=dataset_name, name=config_name, cache_dir=cache_dir_value, data_dir=data_dir)
     if hasattr(dataset_bundle, "items"):
         return [(str(split_name), split_dataset) for split_name, split_dataset in dataset_bundle.items()]
     return [("train", dataset_bundle)]
@@ -717,12 +727,14 @@ def build_huggingface_dataset_manifest(
     output_dir: Path | str,
     config_name: Optional[str] = None,
     split_names: Optional[Sequence[str]] = None,
+    data_dir: Optional[str] = None,
     image_column: str = "image",
     station_id: Any = "hf-public",
     product_family: str = "unknown",
     geometry_mode: str = "auto",
     source_dataset: Optional[str] = None,
     cache_dir: Optional[Path | str] = None,
+    max_records: Optional[int] = None,
     accept_reject_column: Optional[str] = None,
     defect_tags_column: Optional[str] = None,
     station_id_column: Optional[str] = None,
@@ -740,15 +752,21 @@ def build_huggingface_dataset_manifest(
         config_name=config_name,
         split_names=split_names,
         cache_dir=cache_dir,
+        data_dir=data_dir,
     )
     if not resolved_splits:
         raise ValueError("No Hugging Face splits were resolved for %s." % dataset_name)
 
+    remaining_records = None if max_records is None else max(int(max_records), 0)
     for original_split_name, split_dataset in resolved_splits:
+        if remaining_records is not None and remaining_records <= 0:
+            break
         normalized_split = _normalize_dataset_split_name(original_split_name)
         split_dir_name = _sanitize_artifact_component(original_split_name or normalized_split)
         split_image_root = ensure_dir(materialized_root / split_dir_name)
         for row_index, row in enumerate(split_dataset):
+            if remaining_records is not None and remaining_records <= 0:
+                break
             if image_column not in row:
                 raise KeyError("Column %r is not present in Hugging Face dataset %s." % (image_column, dataset_name))
             image = _coerce_huggingface_image_to_uint8(row[image_column], strict_grayscale=strict_grayscale)
@@ -798,6 +816,8 @@ def build_huggingface_dataset_manifest(
                     review_state="unreviewed",
                 )
             )
+            if remaining_records is not None:
+                remaining_records -= 1
     if not records:
         raise ValueError("No records were materialized from Hugging Face dataset %s." % dataset_name)
 
@@ -832,9 +852,11 @@ def build_huggingface_dataset_manifest(
             "source": "huggingface",
             "dataset_name": dataset_name,
             "config_name": config_name,
+            "data_dir": data_dir,
             "requested_splits": list(split_names or ()),
             "image_column": image_column,
             "strict_grayscale": bool(strict_grayscale),
+            "max_records": max_records,
             "metadata_columns": list(metadata_columns),
         },
     )
