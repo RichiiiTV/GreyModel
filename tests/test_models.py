@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import numpy as np
+import torch
 
 from greymodel import LiteModel, ModelInput, StationConfig, BaseModel
+from greymodel.models import build_base_model
+from greymodel.training import TrainingConfig, compute_masked_pretrain_objective
+from greymodel.types import TensorBatch
 
 
 def _make_input(height: int, width: int, station_id: str, geometry_mode: str) -> ModelInput:
@@ -58,3 +62,25 @@ def test_lite_model_forward_matches_public_contract() -> None:
     assert output.defect_family_probs.shape == (6,)
     assert output.defect_heatmap.ndim == 2
     assert output.top_tiles.ndim == 2
+
+
+def test_masked_pretrain_objective_skips_local_tile_branch(monkeypatch) -> None:
+    model = build_base_model(num_defect_families=2)
+    reconstruction_head = torch.nn.Conv2d(model.config.global_hidden_dim, 1, kernel_size=1)
+    batch = TensorBatch(
+        image=torch.zeros((1, 1, 128, 128), dtype=torch.float32),
+        valid_mask=torch.ones((1, 1, 128, 128), dtype=torch.float32),
+        station_id=torch.zeros((1,), dtype=torch.long),
+        geometry_id=torch.zeros((1,), dtype=torch.long),
+        metadata={},
+    )
+
+    def _unexpected_tile_extract(*_args, **_kwargs):
+        raise AssertionError("The local tile branch should not run during masked pretraining.")
+
+    monkeypatch.setattr(model, "_extract_tiles", _unexpected_tile_extract)
+    loss, metrics, extras = compute_masked_pretrain_objective(model, reconstruction_head, batch, TrainingConfig())
+
+    assert loss.ndim == 0
+    assert "masked_reconstruction_loss" in metrics
+    assert extras["output"].global_feature_map is not None

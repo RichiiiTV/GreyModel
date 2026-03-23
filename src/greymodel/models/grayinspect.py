@@ -234,7 +234,7 @@ class GrayInspectH(nn.Module):
         top_tiles = torch.cat([top_boxes.float(), top_scores.unsqueeze(-1)], dim=-1)
         return top_tiles, top_indices, top_boxes
 
-    def forward(self, batch):
+    def _encode_global(self, batch):
         image = batch.image.float()
         valid_mask = batch.valid_mask.float()
         station_id = batch.station_id.long()
@@ -254,6 +254,26 @@ class GrayInspectH(nn.Module):
             tokens = block(tokens, spatial_shape=global_features.shape[-2:], token_mask=token_mask)
         global_features = tokens.transpose(1, 2).reshape_as(global_features)
         global_vector = _masked_average(global_features, global_mask)
+        return image, valid_mask, conditioning, global_features, global_vector
+
+    def forward(self, batch, return_mode: str = "full"):
+        image, valid_mask, conditioning, global_features, global_vector = self._encode_global(batch)
+
+        if return_mode == "global_only":
+            return ModelOutput(
+                reject_score=None,
+                accept_reject_logit=None,
+                defect_family_probs=None,
+                defect_logits=None,
+                defect_heatmap=None,
+                top_tiles=None,
+                top_tile_indices=None,
+                top_tile_boxes=None,
+                global_feature_map=global_features,
+                metadata={"forward_mode": "global_only"},
+            )
+        if return_mode != "full":
+            raise ValueError("Unsupported GrayInspectH return_mode %r." % return_mode)
 
         tile_tensor, tile_mask_tensor, tile_boxes = self._extract_tiles(image, valid_mask)
         batch_size, tile_count, channels, tile_h, tile_w = tile_tensor.shape

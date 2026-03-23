@@ -191,7 +191,10 @@ def compute_masked_pretrain_objective(model, reconstruction_head, model_input, c
         geometry_id=model_input.geometry_id,
         metadata=model_input.metadata,
     )
-    output = model(masked_input)
+    try:
+        output = model(masked_input, return_mode="global_only")
+    except TypeError:
+        output = model(masked_input)
     reconstruction = reconstruction_head(output.global_feature_map)
     if reconstruction.shape[-2:] != model_input.image.shape[-2:]:
         reconstruction = torch.nn.functional.interpolate(
