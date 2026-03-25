@@ -975,6 +975,8 @@ def build_huggingface_dataset_manifest(
             "local_files_only": bool(local_files_only),
             "max_retries": int(max_retries),
             "shape_bucketed_stations": bool(shape_bucketed_stations),
+            "recommended_pretrain_mode": "patch",
+            "recommended_pretrain_crop_size": 512,
         },
     )
     save_dataset_index(index, index_path)

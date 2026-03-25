@@ -10,7 +10,7 @@
 #SBATCH --error=logs/%x-%j.err
 
 # Equivalent cluster-specific submit pattern when your scheduler uses wrap syntax:
-# sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && export PYTHONPATH=$PWD/src && bash scripts/pretrain_8xa100_defect_spectrum.sh"
+# sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && export PYTHONPATH=$PWD/src DIST_STRATEGY=fsdp PRETRAIN_CROP_SIZE=512 PRETRAIN_NUM_CROPS=2 MAX_GLOBAL_FEATURE_GRID=12 && bash scripts/pretrain_8xa100_defect_spectrum.sh"
 
 set -euo pipefail
 
@@ -35,6 +35,11 @@ export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-128}"
 export LOG_EVERY_N_STEPS="${LOG_EVERY_N_STEPS:-10}"
 export CHECKPOINT_EVERY_N_STEPS="${CHECKPOINT_EVERY_N_STEPS:-200}"
 export KEEP_LAST_K_CHECKPOINTS="${KEEP_LAST_K_CHECKPOINTS:-5}"
+export PRETRAIN_CROP_SIZE="${PRETRAIN_CROP_SIZE:-512}"
+export PRETRAIN_NUM_CROPS="${PRETRAIN_NUM_CROPS:-2}"
+export PRETRAIN_CROP_SCALES="${PRETRAIN_CROP_SCALES:-0.75 1.0 1.25}"
+export MAX_GLOBAL_FEATURE_GRID="${MAX_GLOBAL_FEATURE_GRID:-12}"
+export DIST_STRATEGY="${DIST_STRATEGY:-fsdp}"
 
 echo "[GreyModel] job_id=${SLURM_JOB_ID:-interactive}"
 echo "[GreyModel] host=$(hostname)"

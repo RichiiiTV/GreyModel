@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from dataclasses import dataclass
+import math
 import random
-from typing import Dict, Iterable, Mapping, Optional
+from typing import Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
 from .losses import combined_supervised_loss, masked_reconstruction_loss, tile_image_consistency_loss
+from .types import TensorBatch
 
 
 def _require_torch():
@@ -44,6 +46,9 @@ class TrainingConfig:
     grad_accum_steps: int = 1
     precision: str = "auto"
     distributed_backend: str = "auto"
+    distributed_strategy: str = "fsdp"
+    activation_checkpointing: bool = True
+    memory_report: bool = True
     seed: int = 17
     log_every_n_steps: int = 10
     val_every_n_steps: int = 0
@@ -52,6 +57,14 @@ class TrainingConfig:
     resume_from: Optional[str] = None
     station_balanced_sampling: bool = True
     show_progress: bool = True
+    pretrain_crop_size: int = 512
+    pretrain_num_crops: int = 1
+    pretrain_crop_scales: Tuple[float, ...] = (0.75, 1.0, 1.25)
+    pretrain_min_valid_fraction: float = 0.2
+    max_global_feature_grid: int = 16
+    channels_last: bool = False
+    ema_decay: float = 0.0
+    compile_model: bool = False
 
     def resolved_grad_accum_steps(self, world_size: int) -> int:
         base = max(1, self.per_device_batch_size * max(world_size, 1))
@@ -116,6 +129,133 @@ def build_patch_mask(images, valid_mask, patch_size: int = 16, mask_ratio: float
             patch_mask[batch_index, :, y1:y2, x1:x2] = 1.0
     patch_mask *= valid_mask
     return patch_mask
+
+
+def _bounded_crop_size(base_size: int, scale: float, image_height: int, image_width: int) -> int:
+    scaled_size = int(round(float(base_size) * float(scale)))
+    limit = min(int(image_height), int(image_width))
+    return max(16, min(limit, scaled_size))
+
+
+def _valid_crop_bounds(valid_mask) -> Tuple[int, int, int, int]:
+    torch = _require_torch()
+    coordinates = torch.nonzero(valid_mask > 0.5, as_tuple=False)
+    if coordinates.numel() == 0:
+        height, width = int(valid_mask.shape[-2]), int(valid_mask.shape[-1])
+        return 0, 0, height, width
+    y_coords = coordinates[:, -2]
+    x_coords = coordinates[:, -1]
+    return (
+        int(y_coords.min().item()),
+        int(x_coords.min().item()),
+        int(y_coords.max().item()) + 1,
+        int(x_coords.max().item()) + 1,
+    )
+
+
+def _select_crop_window(mask_slice, crop_size: int, min_valid_fraction: float, max_attempts: int = 8) -> Tuple[int, int]:
+    torch = _require_torch()
+    height = int(mask_slice.shape[-2])
+    width = int(mask_slice.shape[-1])
+    if crop_size >= height or crop_size >= width:
+        return 0, 0
+    max_y = max(height - crop_size, 0)
+    max_x = max(width - crop_size, 0)
+    best_coords = (0, 0)
+    best_valid = -1.0
+    for _ in range(max_attempts):
+        if max_y > 0:
+            y1 = int(torch.randint(0, max_y + 1, (1,), device=mask_slice.device).item())
+        else:
+            y1 = 0
+        if max_x > 0:
+            x1 = int(torch.randint(0, max_x + 1, (1,), device=mask_slice.device).item())
+        else:
+            x1 = 0
+        valid_fraction = float(mask_slice[:, y1 : y1 + crop_size, x1 : x1 + crop_size].float().mean().item())
+        if valid_fraction >= float(min_valid_fraction):
+            return y1, x1
+        if valid_fraction > best_valid:
+            best_valid = valid_fraction
+            best_coords = (y1, x1)
+
+    y_min, x_min, y_max, x_max = _valid_crop_bounds(mask_slice)
+    if y_max - y_min > 0 and x_max - x_min > 0:
+        center_y = (y_min + y_max) // 2
+        center_x = (x_min + x_max) // 2
+        y1 = min(max(center_y - crop_size // 2, 0), max_y)
+        x1 = min(max(center_x - crop_size // 2, 0), max_x)
+        return int(y1), int(x1)
+    return best_coords
+
+
+def sample_pretrain_crops(model_input: TensorBatch, config: TrainingConfig) -> TensorBatch:
+    torch = _require_torch()
+    images = model_input.image
+    valid_mask = model_input.valid_mask
+    batch, channels, height, width = images.shape
+    crop_tensors = []
+    crop_masks = []
+    crop_station_ids = []
+    crop_geometry_ids = []
+    metadata = dict(model_input.metadata or {})
+    crop_sizes = list(config.pretrain_crop_scales or (1.0,))
+    crop_count = max(1, int(config.pretrain_num_crops))
+    base_crop_size = max(16, int(config.pretrain_crop_size))
+
+    for batch_index in range(batch):
+        image_slice = images[batch_index : batch_index + 1]
+        mask_slice = valid_mask[batch_index : batch_index + 1]
+        for crop_index in range(crop_count):
+            scale = crop_sizes[(batch_index * crop_count + crop_index) % len(crop_sizes)]
+            crop_size = _bounded_crop_size(base_crop_size, scale, height, width)
+            y1, x1 = _select_crop_window(mask_slice[0], crop_size, config.pretrain_min_valid_fraction)
+            y2 = y1 + crop_size
+            x2 = x1 + crop_size
+            crop_tensors.append(image_slice[:, :, y1:y2, x1:x2])
+            crop_masks.append(mask_slice[:, :, y1:y2, x1:x2])
+            crop_station_ids.append(model_input.station_id[batch_index : batch_index + 1])
+            crop_geometry_ids.append(model_input.geometry_id[batch_index : batch_index + 1])
+
+    stacked_image = torch.cat(crop_tensors, dim=0)
+    stacked_mask = torch.cat(crop_masks, dim=0)
+    return TensorBatch(
+        image=stacked_image,
+        valid_mask=stacked_mask,
+        station_id=torch.cat(crop_station_ids, dim=0),
+        geometry_id=torch.cat(crop_geometry_ids, dim=0),
+        metadata={
+            **metadata,
+            "pretrain_crop_size": base_crop_size,
+            "pretrain_num_crops": crop_count,
+            "pretrain_crop_scales": [float(value) for value in crop_sizes],
+        },
+    )
+
+
+def estimate_batch_pixels(model_input: TensorBatch) -> int:
+    image = model_input.image
+    return int(image.shape[0] * image.shape[-2] * image.shape[-1])
+
+
+def enforce_memory_guardrails(model_input: TensorBatch, config: TrainingConfig, stage: str) -> None:
+    pixels = estimate_batch_pixels(model_input)
+    if stage == "pretrain":
+        max_crop_size = max(16, int(round(config.pretrain_crop_size * max(config.pretrain_crop_scales or (1.0,)))))
+        limit = int(max_crop_size * max_crop_size * max(config.per_device_batch_size, 1) * max(config.pretrain_num_crops, 1))
+    else:
+        limit = int(
+            max(config.max_global_feature_grid, 1)
+            * max(config.max_global_feature_grid, 1)
+            * 64
+            * max(config.per_device_batch_size, 1)
+        )
+        limit = max(limit, pixels)
+    if pixels > limit * 4:
+        raise ValueError(
+            "Runtime batch exceeded the configured memory guardrail for stage %s: %d pixels > %d."
+            % (stage, pixels, limit * 4)
+        )
 
 
 def resolve_precision(training_config: TrainingConfig, device) -> str:

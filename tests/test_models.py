@@ -3,10 +3,9 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from greymodel import LiteModel, ModelInput, StationConfig, BaseModel
+from greymodel import BaseModel, LiteModel, ModelInput, StationConfig
 from greymodel.models import build_base_model
-from greymodel.models.grayinspect import RelativePositionBias2D
-from greymodel.training import TrainingConfig, compute_masked_pretrain_objective
+from greymodel.training import TrainingConfig, compute_masked_pretrain_objective, sample_pretrain_crops
 from greymodel.types import TensorBatch
 
 
@@ -87,18 +86,11 @@ def test_masked_pretrain_objective_skips_local_tile_branch(monkeypatch) -> None:
     assert extras["output"].global_feature_map is not None
 
 
-def test_relative_position_bias_resizes_beyond_configured_capacity() -> None:
-    module = RelativePositionBias2D(num_heads=4, max_height=64, max_width=64)
-    bias = module(height=80, width=2, device=torch.device("cpu"))
-
-    assert bias.shape == (4, 160, 160)
-
-
-def test_global_only_forward_bounds_oversized_token_grids() -> None:
-    model = build_base_model(num_defect_families=2)
+def test_global_only_forward_bounds_oversized_feature_grids() -> None:
+    model = build_base_model(num_defect_families=2, max_global_feature_grid=12)
     batch = TensorBatch(
-        image=torch.zeros((1, 1, 1056, 32), dtype=torch.float32),
-        valid_mask=torch.ones((1, 1, 1056, 32), dtype=torch.float32),
+        image=torch.zeros((1, 1, 1056, 288), dtype=torch.float32),
+        valid_mask=torch.ones((1, 1, 1056, 288), dtype=torch.float32),
         station_id=torch.zeros((1,), dtype=torch.long),
         geometry_id=torch.zeros((1,), dtype=torch.long),
         metadata={},
@@ -106,5 +98,23 @@ def test_global_only_forward_bounds_oversized_token_grids() -> None:
 
     output = model(batch, return_mode="global_only")
 
-    assert output.global_feature_map.shape[-2] <= model.config.max_relative_height
-    assert output.global_feature_map.shape[-1] <= model.config.max_relative_width
+    assert output.global_feature_map.shape[-2] <= model.config.max_global_feature_grid
+    assert output.global_feature_map.shape[-1] <= model.config.max_global_feature_grid
+
+
+def test_patch_pretrain_sampler_returns_square_crops_and_multicrops() -> None:
+    config = TrainingConfig(pretrain_crop_size=96, pretrain_num_crops=2, pretrain_crop_scales=(1.0,))
+    batch = TensorBatch(
+        image=torch.zeros((2, 1, 160, 224), dtype=torch.float32),
+        valid_mask=torch.ones((2, 1, 160, 224), dtype=torch.float32),
+        station_id=torch.tensor([0, 1], dtype=torch.long),
+        geometry_id=torch.tensor([0, 1], dtype=torch.long),
+        metadata={},
+    )
+
+    sampled = sample_pretrain_crops(batch, config)
+
+    assert sampled.image.shape[0] == 4
+    assert sampled.image.shape[-1] == sampled.image.shape[-2] == 96
+    assert sampled.valid_mask.shape == sampled.image.shape
+    assert sampled.metadata["pretrain_num_crops"] == 2

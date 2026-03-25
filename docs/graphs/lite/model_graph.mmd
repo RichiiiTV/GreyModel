@@ -3,520 +3,856 @@ graph TD
   valid_mask["placeholder\nvalid_mask"]
   station_id["placeholder\nstation_id"]
   geometry_id["placeholder\ngeometry_id"]
-  conditioner_station_embedding["call_module\nconditioner.station_embedding"]
-  conditioner_geometry_embedding["call_module\nconditioner.geometry_embedding"]
+  model_conditioner_station_embedding["call_module\nmodel.conditioner.station_embedding"]
+  model_conditioner_geometry_embedding["call_module\nmodel.conditioner.geometry_embedding"]
   add["call_function\n<built-in function add>"]
-  conditioner_proj_0["call_module\nconditioner.proj.0"]
-  conditioner_proj_1["call_module\nconditioner.proj.1"]
-  conditioner_proj_2["call_module\nconditioner.proj.2"]
-  conditioner_proj_3["call_module\nconditioner.proj.3"]
-  stem_0_block_0["call_module\nstem.0.block.0"]
-  stem_0_block_1["call_module\nstem.0.block.1"]
-  stem_0_block_2["call_module\nstem.0.block.2"]
-  stem_1_block_0["call_module\nstem.1.block.0"]
-  stem_1_block_1["call_module\nstem.1.block.1"]
-  stem_1_block_2["call_module\nstem.1.block.2"]
-  stem_2_block_0["call_module\nstem.2.block.0"]
-  stem_2_block_1["call_module\nstem.2.block.1"]
-  stem_2_block_2["call_module\nstem.2.block.2"]
-  stem_affine_scale["call_module\nstem_affine.scale"]
-  tanh["call_function\n<built-in method tanh of type object at 0x00007FF9AC200E90>"]
+  model_conditioner_proj_0["call_module\nmodel.conditioner.proj.0"]
+  model_conditioner_proj_1["call_module\nmodel.conditioner.proj.1"]
+  model_conditioner_proj_2["call_module\nmodel.conditioner.proj.2"]
+  model_conditioner_proj_3["call_module\nmodel.conditioner.proj.3"]
+  model_stem_0_block_0["call_module\nmodel.stem.0.block.0"]
+  model_stem_0_block_1["call_module\nmodel.stem.0.block.1"]
+  model_stem_0_block_2["call_module\nmodel.stem.0.block.2"]
+  model_stem_1_block_0["call_module\nmodel.stem.1.block.0"]
+  model_stem_1_block_1["call_module\nmodel.stem.1.block.1"]
+  model_stem_1_block_2["call_module\nmodel.stem.1.block.2"]
+  model_stem_affine_scale["call_module\nmodel.stem_affine.scale"]
+  tanh["call_function\n<built-in method tanh of type object at 0x00007FF812C1EE90>"]
   unsqueeze["call_method\nunsqueeze"]
   unsqueeze_1["call_method\nunsqueeze"]
-  stem_affine_bias["call_module\nstem_affine.bias"]
+  model_stem_affine_bias["call_module\nmodel.stem_affine.bias"]
   unsqueeze_2["call_method\nunsqueeze"]
   unsqueeze_3["call_method\nunsqueeze"]
   add_1["call_function\n<built-in function add>"]
   mul["call_function\n<built-in function mul>"]
   add_2["call_function\n<built-in function add>"]
-  global_downsample_0_block_0["call_module\nglobal_downsample.0.block.0"]
-  global_downsample_0_block_1["call_module\nglobal_downsample.0.block.1"]
-  global_downsample_0_block_2["call_module\nglobal_downsample.0.block.2"]
-  global_downsample_1_block_0["call_module\nglobal_downsample.1.block.0"]
-  global_downsample_1_block_1["call_module\nglobal_downsample.1.block.1"]
-  global_downsample_1_block_2["call_module\nglobal_downsample.1.block.2"]
-  global_affine_scale["call_module\nglobal_affine.scale"]
-  tanh_1["call_function\n<built-in method tanh of type object at 0x00007FF9AC200E90>"]
-  unsqueeze_4["call_method\nunsqueeze"]
-  unsqueeze_5["call_method\nunsqueeze"]
-  global_affine_bias["call_module\nglobal_affine.bias"]
-  unsqueeze_6["call_method\nunsqueeze"]
-  unsqueeze_7["call_method\nunsqueeze"]
-  add_3["call_function\n<built-in function add>"]
-  mul_1["call_function\n<built-in function mul>"]
-  add_4["call_function\n<built-in function add>"]
-  interpolate["call_function\n<function interpolate at 0x00000234EBEA25E0>"]
-  flatten["call_method\nflatten"]
-  transpose["call_method\ntranspose"]
-  flatten_1["call_method\nflatten"]
-  squeeze["call_method\nsqueeze"]
-  gt["call_function\n<built-in function gt>"]
-  transformer_0_norm1["call_module\ntransformer.0.norm1"]
+  model_stage1_proj["call_module\nmodel.stage1_proj"]
+  model_stage1_0_depthwise["call_module\nmodel.stage1.0.depthwise"]
+  permute["call_method\npermute"]
   getattr_1["call_function\n<built-in function getattr>"]
   getitem["call_function\n<built-in function getitem>"]
-  getitem_1["call_function\n<built-in function getitem>"]
-  getitem_2["call_function\n<built-in function getitem>"]
-  transformer_0_attn_qkv["call_module\ntransformer.0.attn.qkv"]
-  reshape["call_method\nreshape"]
-  permute["call_method\npermute"]
-  getitem_3["call_function\n<built-in function getitem>"]
-  getitem_4["call_function\n<built-in function getitem>"]
-  getitem_5["call_function\n<built-in function getitem>"]
+  model_stage1_0_norm_weight["get_attr\nmodel.stage1.0.norm.weight"]
+  model_stage1_0_norm_bias["get_attr\nmodel.stage1.0.norm.bias"]
+  layer_norm["call_function\n<function layer_norm at 0x000001D174CBBE50>"]
+  permute_1["call_method\npermute"]
+  model_stage1_0_pointwise_0["call_module\nmodel.stage1.0.pointwise.0"]
+  model_stage1_0_pointwise_1["call_module\nmodel.stage1.0.pointwise.1"]
+  model_stage1_0_pointwise_2["call_module\nmodel.stage1.0.pointwise.2"]
+  model_stage1_0_scale["get_attr\nmodel.stage1.0.scale"]
+  view["call_method\nview"]
+  mul_1["call_function\n<built-in function mul>"]
+  add_3["call_function\n<built-in function add>"]
+  model_stage1_affine_scale["call_module\nmodel.stage1_affine.scale"]
+  tanh_1["call_function\n<built-in method tanh of type object at 0x00007FF812C1EE90>"]
+  unsqueeze_4["call_method\nunsqueeze"]
+  unsqueeze_5["call_method\nunsqueeze"]
+  model_stage1_affine_bias["call_module\nmodel.stage1_affine.bias"]
+  unsqueeze_6["call_method\nunsqueeze"]
+  unsqueeze_7["call_method\nunsqueeze"]
+  add_4["call_function\n<built-in function add>"]
   mul_2["call_function\n<built-in function mul>"]
-  transpose_1["call_method\ntranspose"]
-  matmul["call_function\n<built-in method matmul of type object at 0x00007FF9AC200E90>"]
-  _rel_bias_0["get_attr\n_rel_bias_0"]
   add_5["call_function\n<built-in function add>"]
+  permute_2["call_method\npermute"]
+  getattr_2["call_function\n<built-in function getattr>"]
+  getitem_1["call_function\n<built-in function getitem>"]
+  model_stage2_down_block_0_weight["get_attr\nmodel.stage2_down.block.0.weight"]
+  model_stage2_down_block_0_bias["get_attr\nmodel.stage2_down.block.0.bias"]
+  layer_norm_1["call_function\n<function layer_norm at 0x000001D174CBBE50>"]
+  permute_3["call_method\npermute"]
+  model_stage2_down_block_1["call_module\nmodel.stage2_down.block.1"]
+  model_stage2_0_depthwise["call_module\nmodel.stage2.0.depthwise"]
+  permute_4["call_method\npermute"]
+  getattr_3["call_function\n<built-in function getattr>"]
+  getitem_2["call_function\n<built-in function getitem>"]
+  model_stage2_0_norm_weight["get_attr\nmodel.stage2.0.norm.weight"]
+  model_stage2_0_norm_bias["get_attr\nmodel.stage2.0.norm.bias"]
+  layer_norm_2["call_function\n<function layer_norm at 0x000001D174CBBE50>"]
+  permute_5["call_method\npermute"]
+  model_stage2_0_pointwise_0["call_module\nmodel.stage2.0.pointwise.0"]
+  model_stage2_0_pointwise_1["call_module\nmodel.stage2.0.pointwise.1"]
+  model_stage2_0_pointwise_2["call_module\nmodel.stage2.0.pointwise.2"]
+  model_stage2_0_scale["get_attr\nmodel.stage2.0.scale"]
+  view_1["call_method\nview"]
+  mul_3["call_function\n<built-in function mul>"]
+  add_6["call_function\n<built-in function add>"]
+  model_stage2_affine_scale["call_module\nmodel.stage2_affine.scale"]
+  tanh_2["call_function\n<built-in method tanh of type object at 0x00007FF812C1EE90>"]
   unsqueeze_8["call_method\nunsqueeze"]
   unsqueeze_9["call_method\nunsqueeze"]
-  invert["call_function\n<built-in function invert>"]
-  masked_fill["call_method\nmasked_fill"]
-  softmax["call_function\n<built-in method softmax of type object at 0x00007FF9AC200E90>"]
-  matmul_1["call_function\n<built-in method matmul of type object at 0x00007FF9AC200E90>"]
-  transpose_2["call_method\ntranspose"]
-  reshape_1["call_method\nreshape"]
+  model_stage2_affine_bias["call_module\nmodel.stage2_affine.bias"]
   unsqueeze_10["call_method\nunsqueeze"]
-  getattr_2["call_function\n<built-in function getattr>"]
-  to["call_method\nto"]
-  mul_3["call_function\n<built-in function mul>"]
-  transformer_0_attn_out["call_module\ntransformer.0.attn.out"]
-  add_6["call_function\n<built-in function add>"]
-  transformer_0_norm2["call_module\ntransformer.0.norm2"]
-  transformer_0_mlp_0["call_module\ntransformer.0.mlp.0"]
-  transformer_0_mlp_1["call_module\ntransformer.0.mlp.1"]
-  transformer_0_mlp_2["call_module\ntransformer.0.mlp.2"]
-  add_7["call_function\n<built-in function add>"]
   unsqueeze_11["call_method\nunsqueeze"]
-  getattr_3["call_function\n<built-in function getattr>"]
-  to_1["call_method\nto"]
+  add_7["call_function\n<built-in function add>"]
   mul_4["call_function\n<built-in function mul>"]
-  transformer_1_norm1["call_module\ntransformer.1.norm1"]
-  getattr_4["call_function\n<built-in function getattr>"]
-  getitem_6["call_function\n<built-in function getitem>"]
-  getitem_7["call_function\n<built-in function getitem>"]
-  getitem_8["call_function\n<built-in function getitem>"]
-  transformer_1_attn_qkv["call_module\ntransformer.1.attn.qkv"]
-  reshape_2["call_method\nreshape"]
-  permute_1["call_method\npermute"]
-  getitem_9["call_function\n<built-in function getitem>"]
-  getitem_10["call_function\n<built-in function getitem>"]
-  getitem_11["call_function\n<built-in function getitem>"]
-  mul_5["call_function\n<built-in function mul>"]
-  transpose_3["call_method\ntranspose"]
-  matmul_2["call_function\n<built-in method matmul of type object at 0x00007FF9AC200E90>"]
-  _rel_bias_1["get_attr\n_rel_bias_1"]
   add_8["call_function\n<built-in function add>"]
+  permute_6["call_method\npermute"]
+  getattr_4["call_function\n<built-in function getattr>"]
+  getitem_3["call_function\n<built-in function getitem>"]
+  model_stage3_down_block_0_weight["get_attr\nmodel.stage3_down.block.0.weight"]
+  model_stage3_down_block_0_bias["get_attr\nmodel.stage3_down.block.0.bias"]
+  layer_norm_3["call_function\n<function layer_norm at 0x000001D174CBBE50>"]
+  permute_7["call_method\npermute"]
+  model_stage3_down_block_1["call_module\nmodel.stage3_down.block.1"]
+  model_stage3_0_depthwise["call_module\nmodel.stage3.0.depthwise"]
+  permute_8["call_method\npermute"]
+  getattr_5["call_function\n<built-in function getattr>"]
+  getitem_4["call_function\n<built-in function getitem>"]
+  model_stage3_0_norm_weight["get_attr\nmodel.stage3.0.norm.weight"]
+  model_stage3_0_norm_bias["get_attr\nmodel.stage3.0.norm.bias"]
+  layer_norm_4["call_function\n<function layer_norm at 0x000001D174CBBE50>"]
+  permute_9["call_method\npermute"]
+  model_stage3_0_pointwise_0["call_module\nmodel.stage3.0.pointwise.0"]
+  model_stage3_0_pointwise_1["call_module\nmodel.stage3.0.pointwise.1"]
+  model_stage3_0_pointwise_2["call_module\nmodel.stage3.0.pointwise.2"]
+  model_stage3_0_scale["get_attr\nmodel.stage3.0.scale"]
+  view_2["call_method\nview"]
+  mul_5["call_function\n<built-in function mul>"]
+  add_9["call_function\n<built-in function add>"]
+  model_stage3_1_depthwise["call_module\nmodel.stage3.1.depthwise"]
+  permute_10["call_method\npermute"]
+  getattr_6["call_function\n<built-in function getattr>"]
+  getitem_5["call_function\n<built-in function getitem>"]
+  model_stage3_1_norm_weight["get_attr\nmodel.stage3.1.norm.weight"]
+  model_stage3_1_norm_bias["get_attr\nmodel.stage3.1.norm.bias"]
+  layer_norm_5["call_function\n<function layer_norm at 0x000001D174CBBE50>"]
+  permute_11["call_method\npermute"]
+  model_stage3_1_pointwise_0["call_module\nmodel.stage3.1.pointwise.0"]
+  model_stage3_1_pointwise_1["call_module\nmodel.stage3.1.pointwise.1"]
+  model_stage3_1_pointwise_2["call_module\nmodel.stage3.1.pointwise.2"]
+  model_stage3_1_scale["get_attr\nmodel.stage3.1.scale"]
+  view_3["call_method\nview"]
+  mul_6["call_function\n<built-in function mul>"]
+  add_10["call_function\n<built-in function add>"]
+  model_stage3_affine_scale["call_module\nmodel.stage3_affine.scale"]
+  tanh_3["call_function\n<built-in method tanh of type object at 0x00007FF812C1EE90>"]
   unsqueeze_12["call_method\nunsqueeze"]
   unsqueeze_13["call_method\nunsqueeze"]
-  invert_1["call_function\n<built-in function invert>"]
-  masked_fill_1["call_method\nmasked_fill"]
-  softmax_1["call_function\n<built-in method softmax of type object at 0x00007FF9AC200E90>"]
-  matmul_3["call_function\n<built-in method matmul of type object at 0x00007FF9AC200E90>"]
-  transpose_4["call_method\ntranspose"]
-  reshape_3["call_method\nreshape"]
+  model_stage3_affine_bias["call_module\nmodel.stage3_affine.bias"]
   unsqueeze_14["call_method\nunsqueeze"]
-  getattr_5["call_function\n<built-in function getattr>"]
-  to_2["call_method\nto"]
-  mul_6["call_function\n<built-in function mul>"]
-  transformer_1_attn_out["call_module\ntransformer.1.attn.out"]
-  add_9["call_function\n<built-in function add>"]
-  transformer_1_norm2["call_module\ntransformer.1.norm2"]
-  transformer_1_mlp_0["call_module\ntransformer.1.mlp.0"]
-  transformer_1_mlp_1["call_module\ntransformer.1.mlp.1"]
-  transformer_1_mlp_2["call_module\ntransformer.1.mlp.2"]
-  add_10["call_function\n<built-in function add>"]
   unsqueeze_15["call_method\nunsqueeze"]
-  getattr_6["call_function\n<built-in function getattr>"]
-  to_3["call_method\nto"]
+  add_11["call_function\n<built-in function add>"]
   mul_7["call_function\n<built-in function mul>"]
-  transpose_5["call_method\ntranspose"]
-  reshape_as["call_method\nreshape_as"]
+  add_12["call_function\n<built-in function add>"]
+  permute_12["call_method\npermute"]
+  getattr_7["call_function\n<built-in function getattr>"]
+  getitem_6["call_function\n<built-in function getitem>"]
+  model_stage4_down_block_0_weight["get_attr\nmodel.stage4_down.block.0.weight"]
+  model_stage4_down_block_0_bias["get_attr\nmodel.stage4_down.block.0.bias"]
+  layer_norm_6["call_function\n<function layer_norm at 0x000001D174CBBE50>"]
+  permute_13["call_method\npermute"]
+  model_stage4_down_block_1["call_module\nmodel.stage4_down.block.1"]
+  model_stage4_0_depthwise["call_module\nmodel.stage4.0.depthwise"]
+  permute_14["call_method\npermute"]
+  getattr_8["call_function\n<built-in function getattr>"]
+  getitem_7["call_function\n<built-in function getitem>"]
+  model_stage4_0_norm_weight["get_attr\nmodel.stage4.0.norm.weight"]
+  model_stage4_0_norm_bias["get_attr\nmodel.stage4.0.norm.bias"]
+  layer_norm_7["call_function\n<function layer_norm at 0x000001D174CBBE50>"]
+  permute_15["call_method\npermute"]
+  model_stage4_0_pointwise_0["call_module\nmodel.stage4.0.pointwise.0"]
+  model_stage4_0_pointwise_1["call_module\nmodel.stage4.0.pointwise.1"]
+  model_stage4_0_pointwise_2["call_module\nmodel.stage4.0.pointwise.2"]
+  model_stage4_0_scale["get_attr\nmodel.stage4.0.scale"]
+  view_4["call_method\nview"]
   mul_8["call_function\n<built-in function mul>"]
+  add_13["call_function\n<built-in function add>"]
+  model_stage4_affine_scale["call_module\nmodel.stage4_affine.scale"]
+  tanh_4["call_function\n<built-in method tanh of type object at 0x00007FF812C1EE90>"]
+  unsqueeze_16["call_method\nunsqueeze"]
+  unsqueeze_17["call_method\nunsqueeze"]
+  model_stage4_affine_bias["call_module\nmodel.stage4_affine.bias"]
+  unsqueeze_18["call_method\nunsqueeze"]
+  unsqueeze_19["call_method\nunsqueeze"]
+  add_14["call_function\n<built-in function add>"]
+  mul_9["call_function\n<built-in function mul>"]
+  add_15["call_function\n<built-in function add>"]
+  model_pyramid_laterals_0["call_module\nmodel.pyramid_laterals.0"]
+  model_pyramid_laterals_1["call_module\nmodel.pyramid_laterals.1"]
+  model_pyramid_laterals_2["call_module\nmodel.pyramid_laterals.2"]
+  model_pyramid_laterals_3["call_module\nmodel.pyramid_laterals.3"]
+  getattr_9["call_function\n<built-in function getattr>"]
+  getitem_8["call_function\n<built-in function getitem>"]
+  interpolate["call_function\n<function interpolate at 0x000001D174D39790>"]
+  model_bifpn_0_td3_weights["get_attr\nmodel.bifpn.0.td3.weights"]
+  relu["call_function\n<function relu at 0x000001D174CB9DC0>"]
   sum_1["call_method\nsum"]
   clamp_min["call_method\nclamp_min"]
-  sum_2["call_method\nsum"]
   truediv["call_function\n<built-in function truediv>"]
+  stack["call_function\n<built-in method stack of type object at 0x00007FF812C1EE90>"]
+  view_5["call_method\nview"]
+  mul_10["call_function\n<built-in function mul>"]
+  sum_2["call_method\nsum"]
+  model_bifpn_0_td3_refine_0["call_module\nmodel.bifpn.0.td3.refine.0"]
+  model_bifpn_0_td3_refine_1["call_module\nmodel.bifpn.0.td3.refine.1"]
+  model_bifpn_0_td3_refine_2["call_module\nmodel.bifpn.0.td3.refine.2"]
+  model_bifpn_0_td3_refine_3["call_module\nmodel.bifpn.0.td3.refine.3"]
+  getattr_10["call_function\n<built-in function getattr>"]
+  getitem_9["call_function\n<built-in function getitem>"]
+  interpolate_1["call_function\n<function interpolate at 0x000001D174D39790>"]
+  model_bifpn_0_td2_weights["get_attr\nmodel.bifpn.0.td2.weights"]
+  relu_1["call_function\n<function relu at 0x000001D174CB9DC0>"]
+  sum_3["call_method\nsum"]
+  clamp_min_1["call_method\nclamp_min"]
+  truediv_1["call_function\n<built-in function truediv>"]
+  stack_1["call_function\n<built-in method stack of type object at 0x00007FF812C1EE90>"]
+  view_6["call_method\nview"]
+  mul_11["call_function\n<built-in function mul>"]
+  sum_4["call_method\nsum"]
+  model_bifpn_0_td2_refine_0["call_module\nmodel.bifpn.0.td2.refine.0"]
+  model_bifpn_0_td2_refine_1["call_module\nmodel.bifpn.0.td2.refine.1"]
+  model_bifpn_0_td2_refine_2["call_module\nmodel.bifpn.0.td2.refine.2"]
+  model_bifpn_0_td2_refine_3["call_module\nmodel.bifpn.0.td2.refine.3"]
+  getattr_11["call_function\n<built-in function getattr>"]
+  getitem_10["call_function\n<built-in function getitem>"]
+  interpolate_2["call_function\n<function interpolate at 0x000001D174D39790>"]
+  model_bifpn_0_td1_weights["get_attr\nmodel.bifpn.0.td1.weights"]
+  relu_2["call_function\n<function relu at 0x000001D174CB9DC0>"]
+  sum_5["call_method\nsum"]
+  clamp_min_2["call_method\nclamp_min"]
+  truediv_2["call_function\n<built-in function truediv>"]
+  stack_2["call_function\n<built-in method stack of type object at 0x00007FF812C1EE90>"]
+  view_7["call_method\nview"]
+  mul_12["call_function\n<built-in function mul>"]
+  sum_6["call_method\nsum"]
+  model_bifpn_0_td1_refine_0["call_module\nmodel.bifpn.0.td1.refine.0"]
+  model_bifpn_0_td1_refine_1["call_module\nmodel.bifpn.0.td1.refine.1"]
+  model_bifpn_0_td1_refine_2["call_module\nmodel.bifpn.0.td1.refine.2"]
+  model_bifpn_0_td1_refine_3["call_module\nmodel.bifpn.0.td1.refine.3"]
+  getattr_12["call_function\n<built-in function getattr>"]
+  getitem_11["call_function\n<built-in function getitem>"]
+  adaptive_max_pool2d["call_function\n<function boolean_dispatch.<locals>.fn at 0x000001D174CB9670>"]
+  model_bifpn_0_out2_weights["get_attr\nmodel.bifpn.0.out2.weights"]
+  relu_3["call_function\n<function relu at 0x000001D174CB9DC0>"]
+  sum_7["call_method\nsum"]
+  clamp_min_3["call_method\nclamp_min"]
+  truediv_3["call_function\n<built-in function truediv>"]
+  stack_3["call_function\n<built-in method stack of type object at 0x00007FF812C1EE90>"]
+  view_8["call_method\nview"]
+  mul_13["call_function\n<built-in function mul>"]
+  sum_8["call_method\nsum"]
+  model_bifpn_0_out2_refine_0["call_module\nmodel.bifpn.0.out2.refine.0"]
+  model_bifpn_0_out2_refine_1["call_module\nmodel.bifpn.0.out2.refine.1"]
+  model_bifpn_0_out2_refine_2["call_module\nmodel.bifpn.0.out2.refine.2"]
+  model_bifpn_0_out2_refine_3["call_module\nmodel.bifpn.0.out2.refine.3"]
+  getattr_13["call_function\n<built-in function getattr>"]
   getitem_12["call_function\n<built-in function getitem>"]
+  adaptive_max_pool2d_1["call_function\n<function boolean_dispatch.<locals>.fn at 0x000001D174CB9670>"]
+  model_bifpn_0_out3_weights["get_attr\nmodel.bifpn.0.out3.weights"]
+  relu_4["call_function\n<function relu at 0x000001D174CB9DC0>"]
+  sum_9["call_method\nsum"]
+  clamp_min_4["call_method\nclamp_min"]
+  truediv_4["call_function\n<built-in function truediv>"]
+  stack_4["call_function\n<built-in method stack of type object at 0x00007FF812C1EE90>"]
+  view_9["call_method\nview"]
+  mul_14["call_function\n<built-in function mul>"]
+  sum_10["call_method\nsum"]
+  model_bifpn_0_out3_refine_0["call_module\nmodel.bifpn.0.out3.refine.0"]
+  model_bifpn_0_out3_refine_1["call_module\nmodel.bifpn.0.out3.refine.1"]
+  model_bifpn_0_out3_refine_2["call_module\nmodel.bifpn.0.out3.refine.2"]
+  model_bifpn_0_out3_refine_3["call_module\nmodel.bifpn.0.out3.refine.3"]
+  getattr_14["call_function\n<built-in function getattr>"]
   getitem_13["call_function\n<built-in function getitem>"]
-  stack["call_function\n<built-in method stack of type object at 0x00007FF9AC200E90>"]
-  stack_1["call_function\n<built-in method stack of type object at 0x00007FF9AC200E90>"]
-  getattr_7["call_function\n<built-in function getattr>"]
+  adaptive_max_pool2d_2["call_function\n<function boolean_dispatch.<locals>.fn at 0x000001D174CB9670>"]
+  model_bifpn_0_out4_weights["get_attr\nmodel.bifpn.0.out4.weights"]
+  relu_5["call_function\n<function relu at 0x000001D174CB9DC0>"]
+  sum_11["call_method\nsum"]
+  clamp_min_5["call_method\nclamp_min"]
+  truediv_5["call_function\n<built-in function truediv>"]
+  stack_5["call_function\n<built-in method stack of type object at 0x00007FF812C1EE90>"]
+  view_10["call_method\nview"]
+  mul_15["call_function\n<built-in function mul>"]
+  sum_12["call_method\nsum"]
+  model_bifpn_0_out4_refine_0["call_module\nmodel.bifpn.0.out4.refine.0"]
+  model_bifpn_0_out4_refine_1["call_module\nmodel.bifpn.0.out4.refine.1"]
+  model_bifpn_0_out4_refine_2["call_module\nmodel.bifpn.0.out4.refine.2"]
+  model_bifpn_0_out4_refine_3["call_module\nmodel.bifpn.0.out4.refine.3"]
+  getattr_15["call_function\n<built-in function getattr>"]
   getitem_14["call_function\n<built-in function getitem>"]
+  interpolate_3["call_function\n<function interpolate at 0x000001D174D39790>"]
+  adaptive_avg_pool2d["call_function\n<function adaptive_avg_pool2d at 0x000001D174CB98B0>"]
+  adaptive_max_pool2d_3["call_function\n<function boolean_dispatch.<locals>.fn at 0x000001D174CB9670>"]
+  model_global_context_project["call_module\nmodel.global_context_project"]
+  mul_16["call_function\n<built-in function mul>"]
+  mul_17["call_function\n<built-in function mul>"]
+  sum_13["call_method\nsum"]
+  clamp_min_6["call_method\nclamp_min"]
+  sum_14["call_method\nsum"]
+  truediv_6["call_function\n<built-in function truediv>"]
+  model_global_project["call_module\nmodel.global_project"]
   getitem_15["call_function\n<built-in function getitem>"]
   getitem_16["call_function\n<built-in function getitem>"]
   getitem_17["call_function\n<built-in function getitem>"]
   getitem_18["call_function\n<built-in function getitem>"]
-  mul_9["call_function\n<built-in function mul>"]
-  reshape_4["call_method\nreshape"]
-  mul_10["call_function\n<built-in function mul>"]
-  reshape_5["call_method\nreshape"]
-  local_encoder_net_0_block_0["call_module\nlocal_encoder.net.0.block.0"]
-  local_encoder_net_0_block_1["call_module\nlocal_encoder.net.0.block.1"]
-  local_encoder_net_0_block_2["call_module\nlocal_encoder.net.0.block.2"]
-  local_encoder_net_1_block_0["call_module\nlocal_encoder.net.1.block.0"]
-  local_encoder_net_1_block_1["call_module\nlocal_encoder.net.1.block.1"]
-  local_encoder_net_1_block_2["call_module\nlocal_encoder.net.1.block.2"]
-  local_encoder_net_2_block_0["call_module\nlocal_encoder.net.2.block.0"]
-  local_encoder_net_2_block_1["call_module\nlocal_encoder.net.2.block.1"]
-  local_encoder_net_2_block_2["call_module\nlocal_encoder.net.2.block.2"]
-  local_encoder_net_3_block_0["call_module\nlocal_encoder.net.3.block.0"]
-  local_encoder_net_3_block_1["call_module\nlocal_encoder.net.3.block.1"]
-  local_encoder_net_3_block_2["call_module\nlocal_encoder.net.3.block.2"]
-  getattr_8["call_function\n<built-in function getattr>"]
   getitem_19["call_function\n<built-in function getitem>"]
-  interpolate_1["call_function\n<function interpolate at 0x00000234EBEA25E0>"]
-  mul_11["call_function\n<built-in function mul>"]
-  sum_3["call_method\nsum"]
-  clamp_min_1["call_method\nclamp_min"]
-  sum_4["call_method\nsum"]
-  truediv_1["call_function\n<built-in function truediv>"]
-  local_encoder_project["call_module\nlocal_encoder.project"]
-  reshape_6["call_method\nreshape"]
-  local_affine_scale["call_module\nlocal_affine.scale"]
-  tanh_2["call_function\n<built-in method tanh of type object at 0x00007FF9AC200E90>"]
-  unsqueeze_16["call_method\nunsqueeze"]
-  local_affine_bias["call_module\nlocal_affine.bias"]
-  unsqueeze_17["call_method\nunsqueeze"]
-  add_11["call_function\n<built-in function add>"]
-  mul_12["call_function\n<built-in function mul>"]
-  add_12["call_function\n<built-in function add>"]
-  tile_classifier["call_module\ntile_classifier"]
-  squeeze_1["call_method\nsqueeze"]
-  mean["call_method\nmean"]
-  ge["call_function\n<built-in function ge>"]
-  tile_pool_attention["call_module\ntile_pool.attention"]
-  squeeze_2["call_method\nsqueeze"]
-  invert_2["call_function\n<built-in function invert>"]
-  masked_fill_2["call_method\nmasked_fill"]
-  softmax_2["call_function\n<built-in method softmax of type object at 0x00007FF9AC200E90>"]
-  unsqueeze_18["call_method\nunsqueeze"]
-  mul_13["call_function\n<built-in function mul>"]
-  sum_5["call_method\nsum"]
-  global_project["call_module\nglobal_project"]
-  local_project["call_module\nlocal_project"]
-  condition_project["call_module\ncondition_project"]
-  cat["call_function\n<built-in method cat of type object at 0x00007FF9AC200E90>"]
-  fusion_gate_0["call_module\nfusion_gate.0"]
-  fusion_gate_1["call_module\nfusion_gate.1"]
-  fusion_gate_2["call_module\nfusion_gate.2"]
-  sigmoid["call_function\n<built-in method sigmoid of type object at 0x00007FF9AC200E90>"]
-  mul_14["call_function\n<built-in function mul>"]
-  sub["call_function\n<built-in function sub>"]
-  mul_15["call_function\n<built-in function mul>"]
-  add_13["call_function\n<built-in function add>"]
-  mul_16["call_function\n<built-in function mul>"]
-  add_14["call_function\n<built-in function add>"]
-  reject_head["call_module\nreject_head"]
-  squeeze_3["call_method\nsqueeze"]
-  defect_head["call_module\ndefect_head"]
-  global_heatmap_head["call_module\nglobal_heatmap_head"]
-  interpolate_2["call_function\n<function interpolate at 0x00000234EBEA25E0>"]
-  getattr_9["call_function\n<built-in function getattr>"]
   getitem_20["call_function\n<built-in function getitem>"]
-  getattr_10["call_function\n<built-in function getattr>"]
   getitem_21["call_function\n<built-in function getitem>"]
-  view["call_method\nview"]
-  _tensor_constant0["get_attr\n_tensor_constant0"]
-  mul_17["call_function\n<built-in function mul>"]
-  sum_6["call_method\nsum"]
-  tile_mask_counts["get_attr\ntile_mask_counts"]
-  truediv_2["call_function\n<built-in function truediv>"]
+  getitem_22["call_function\n<built-in function getitem>"]
+  getitem_23["call_function\n<built-in function getitem>"]
+  getitem_24["call_function\n<built-in function getitem>"]
+  getitem_25["call_function\n<built-in function getitem>"]
+  getitem_26["call_function\n<built-in function getitem>"]
+  getitem_27["call_function\n<built-in function getitem>"]
+  getitem_28["call_function\n<built-in function getitem>"]
+  getitem_29["call_function\n<built-in function getitem>"]
+  getitem_30["call_function\n<built-in function getitem>"]
+  getitem_31["call_function\n<built-in function getitem>"]
+  getitem_32["call_function\n<built-in function getitem>"]
+  getitem_33["call_function\n<built-in function getitem>"]
+  getitem_34["call_function\n<built-in function getitem>"]
+  getitem_35["call_function\n<built-in function getitem>"]
+  getitem_36["call_function\n<built-in function getitem>"]
+  getitem_37["call_function\n<built-in function getitem>"]
+  getitem_38["call_function\n<built-in function getitem>"]
+  getitem_39["call_function\n<built-in function getitem>"]
+  getitem_40["call_function\n<built-in function getitem>"]
+  getitem_41["call_function\n<built-in function getitem>"]
+  getitem_42["call_function\n<built-in function getitem>"]
+  getitem_43["call_function\n<built-in function getitem>"]
+  getitem_44["call_function\n<built-in function getitem>"]
+  getitem_45["call_function\n<built-in function getitem>"]
+  getitem_46["call_function\n<built-in function getitem>"]
+  getitem_47["call_function\n<built-in function getitem>"]
+  getitem_48["call_function\n<built-in function getitem>"]
+  getitem_49["call_function\n<built-in function getitem>"]
+  getitem_50["call_function\n<built-in function getitem>"]
+  getitem_51["call_function\n<built-in function getitem>"]
+  getitem_52["call_function\n<built-in function getitem>"]
+  getitem_53["call_function\n<built-in function getitem>"]
+  getitem_54["call_function\n<built-in function getitem>"]
+  getitem_55["call_function\n<built-in function getitem>"]
+  getitem_56["call_function\n<built-in function getitem>"]
+  getitem_57["call_function\n<built-in function getitem>"]
+  getitem_58["call_function\n<built-in function getitem>"]
+  getitem_59["call_function\n<built-in function getitem>"]
+  getitem_60["call_function\n<built-in function getitem>"]
+  getitem_61["call_function\n<built-in function getitem>"]
+  getitem_62["call_function\n<built-in function getitem>"]
+  getitem_63["call_function\n<built-in function getitem>"]
+  getitem_64["call_function\n<built-in function getitem>"]
+  stack_6["call_function\n<built-in method stack of type object at 0x00007FF812C1EE90>"]
+  stack_7["call_function\n<built-in method stack of type object at 0x00007FF812C1EE90>"]
   mul_18["call_function\n<built-in function mul>"]
+  mean["call_method\nmean"]
+  getattr_16["call_function\n<built-in function getattr>"]
+  getitem_65["call_function\n<built-in function getitem>"]
+  getattr_17["call_function\n<built-in function getattr>"]
+  getitem_66["call_function\n<built-in function getitem>"]
+  view_11["call_method\nview"]
+  _tensor_constant0["get_attr\n_tensor_constant0"]
   mul_19["call_function\n<built-in function mul>"]
+  sum_15["call_method\nsum"]
+  tile_mask_counts["get_attr\ntile_mask_counts"]
+  truediv_7["call_function\n<built-in function truediv>"]
   mul_20["call_function\n<built-in function mul>"]
-  add_15["call_function\n<built-in function add>"]
-  sigmoid_1["call_function\n<built-in method sigmoid of type object at 0x00007FF9AC200E90>"]
+  mean_1["call_method\nmean"]
+  unsqueeze_20["call_method\nunsqueeze"]
+  getattr_18["call_function\n<built-in function getattr>"]
+  getitem_67["call_function\n<built-in function getitem>"]
+  expand["call_method\nexpand"]
+  model_condition_project["call_module\nmodel.condition_project"]
+  cat["call_function\n<built-in method cat of type object at 0x00007FF812C1EE90>"]
+  model_fusion_gate_0["call_module\nmodel.fusion_gate.0"]
+  model_fusion_gate_1["call_module\nmodel.fusion_gate.1"]
+  model_fusion_gate_2["call_module\nmodel.fusion_gate.2"]
+  sigmoid["call_function\n<built-in method sigmoid of type object at 0x00007FF812C1EE90>"]
   mul_21["call_function\n<built-in function mul>"]
+  sub["call_function\n<built-in function sub>"]
+  mul_22["call_function\n<built-in function mul>"]
+  add_16["call_function\n<built-in function add>"]
+  mul_23["call_function\n<built-in function mul>"]
+  add_17["call_function\n<built-in function add>"]
+  model_reject_head["call_module\nmodel.reject_head"]
+  squeeze["call_method\nsqueeze"]
+  model_defect_head["call_module\nmodel.defect_head"]
+  model_global_heatmap_head_0["call_module\nmodel.global_heatmap_head.0"]
+  model_global_heatmap_head_1["call_module\nmodel.global_heatmap_head.1"]
+  model_global_heatmap_head_2["call_module\nmodel.global_heatmap_head.2"]
+  interpolate_4["call_function\n<function interpolate at 0x000001D174D39790>"]
+  mul_24["call_function\n<built-in function mul>"]
+  mul_25["call_function\n<built-in function mul>"]
+  add_18["call_function\n<built-in function add>"]
+  sigmoid_1["call_function\n<built-in method sigmoid of type object at 0x00007FF812C1EE90>"]
+  mul_26["call_function\n<built-in function mul>"]
   output["output\noutput"]
-  station_id --> conditioner_station_embedding
-  geometry_id --> conditioner_geometry_embedding
-  conditioner_station_embedding --> add
-  conditioner_geometry_embedding --> add
-  add --> conditioner_proj_0
-  conditioner_proj_0 --> conditioner_proj_1
-  conditioner_proj_1 --> conditioner_proj_2
-  conditioner_proj_2 --> conditioner_proj_3
-  image --> stem_0_block_0
-  stem_0_block_0 --> stem_0_block_1
-  stem_0_block_1 --> stem_0_block_2
-  stem_0_block_2 --> stem_1_block_0
-  stem_1_block_0 --> stem_1_block_1
-  stem_1_block_1 --> stem_1_block_2
-  stem_1_block_2 --> stem_2_block_0
-  stem_2_block_0 --> stem_2_block_1
-  stem_2_block_1 --> stem_2_block_2
-  conditioner_proj_3 --> stem_affine_scale
-  stem_affine_scale --> tanh
+  station_id --> model_conditioner_station_embedding
+  geometry_id --> model_conditioner_geometry_embedding
+  model_conditioner_station_embedding --> add
+  model_conditioner_geometry_embedding --> add
+  add --> model_conditioner_proj_0
+  model_conditioner_proj_0 --> model_conditioner_proj_1
+  model_conditioner_proj_1 --> model_conditioner_proj_2
+  model_conditioner_proj_2 --> model_conditioner_proj_3
+  image --> model_stem_0_block_0
+  model_stem_0_block_0 --> model_stem_0_block_1
+  model_stem_0_block_1 --> model_stem_0_block_2
+  model_stem_0_block_2 --> model_stem_1_block_0
+  model_stem_1_block_0 --> model_stem_1_block_1
+  model_stem_1_block_1 --> model_stem_1_block_2
+  model_conditioner_proj_3 --> model_stem_affine_scale
+  model_stem_affine_scale --> tanh
   tanh --> unsqueeze
   unsqueeze --> unsqueeze_1
-  conditioner_proj_3 --> stem_affine_bias
-  stem_affine_bias --> unsqueeze_2
+  model_conditioner_proj_3 --> model_stem_affine_bias
+  model_stem_affine_bias --> unsqueeze_2
   unsqueeze_2 --> unsqueeze_3
   unsqueeze_1 --> add_1
-  stem_2_block_2 --> mul
+  model_stem_1_block_2 --> mul
   add_1 --> mul
   mul --> add_2
   unsqueeze_3 --> add_2
-  add_2 --> global_downsample_0_block_0
-  global_downsample_0_block_0 --> global_downsample_0_block_1
-  global_downsample_0_block_1 --> global_downsample_0_block_2
-  global_downsample_0_block_2 --> global_downsample_1_block_0
-  global_downsample_1_block_0 --> global_downsample_1_block_1
-  global_downsample_1_block_1 --> global_downsample_1_block_2
-  conditioner_proj_3 --> global_affine_scale
-  global_affine_scale --> tanh_1
+  add_2 --> model_stage1_proj
+  model_stage1_proj --> model_stage1_0_depthwise
+  model_stage1_0_depthwise --> permute
+  model_stage1_0_depthwise --> getattr_1
+  getattr_1 --> getitem
+  permute --> layer_norm
+  getitem --> layer_norm
+  model_stage1_0_norm_weight --> layer_norm
+  model_stage1_0_norm_bias --> layer_norm
+  layer_norm --> permute_1
+  permute_1 --> model_stage1_0_pointwise_0
+  model_stage1_0_pointwise_0 --> model_stage1_0_pointwise_1
+  model_stage1_0_pointwise_1 --> model_stage1_0_pointwise_2
+  model_stage1_0_scale --> view
+  view --> mul_1
+  model_stage1_0_pointwise_2 --> mul_1
+  model_stage1_proj --> add_3
+  mul_1 --> add_3
+  model_conditioner_proj_3 --> model_stage1_affine_scale
+  model_stage1_affine_scale --> tanh_1
   tanh_1 --> unsqueeze_4
   unsqueeze_4 --> unsqueeze_5
-  conditioner_proj_3 --> global_affine_bias
-  global_affine_bias --> unsqueeze_6
+  model_conditioner_proj_3 --> model_stage1_affine_bias
+  model_stage1_affine_bias --> unsqueeze_6
   unsqueeze_6 --> unsqueeze_7
-  unsqueeze_5 --> add_3
-  global_downsample_1_block_2 --> mul_1
-  add_3 --> mul_1
-  mul_1 --> add_4
-  unsqueeze_7 --> add_4
-  valid_mask --> interpolate
-  add_4 --> flatten
-  flatten --> transpose
-  interpolate --> flatten_1
-  flatten_1 --> squeeze
-  squeeze --> gt
-  transpose --> transformer_0_norm1
-  transformer_0_norm1 --> getattr_1
-  getattr_1 --> getitem
-  getattr_1 --> getitem_1
-  getattr_1 --> getitem_2
-  transformer_0_norm1 --> transformer_0_attn_qkv
-  transformer_0_attn_qkv --> reshape
-  getitem --> reshape
-  getitem_1 --> reshape
-  reshape --> permute
-  permute --> getitem_3
-  permute --> getitem_4
-  permute --> getitem_5
-  getitem_3 --> mul_2
-  getitem_4 --> transpose_1
-  mul_2 --> matmul
-  transpose_1 --> matmul
-  matmul --> add_5
-  _rel_bias_0 --> add_5
-  gt --> unsqueeze_8
+  unsqueeze_5 --> add_4
+  add_3 --> mul_2
+  add_4 --> mul_2
+  mul_2 --> add_5
+  unsqueeze_7 --> add_5
+  add_5 --> permute_2
+  add_5 --> getattr_2
+  getattr_2 --> getitem_1
+  permute_2 --> layer_norm_1
+  getitem_1 --> layer_norm_1
+  model_stage2_down_block_0_weight --> layer_norm_1
+  model_stage2_down_block_0_bias --> layer_norm_1
+  layer_norm_1 --> permute_3
+  permute_3 --> model_stage2_down_block_1
+  model_stage2_down_block_1 --> model_stage2_0_depthwise
+  model_stage2_0_depthwise --> permute_4
+  model_stage2_0_depthwise --> getattr_3
+  getattr_3 --> getitem_2
+  permute_4 --> layer_norm_2
+  getitem_2 --> layer_norm_2
+  model_stage2_0_norm_weight --> layer_norm_2
+  model_stage2_0_norm_bias --> layer_norm_2
+  layer_norm_2 --> permute_5
+  permute_5 --> model_stage2_0_pointwise_0
+  model_stage2_0_pointwise_0 --> model_stage2_0_pointwise_1
+  model_stage2_0_pointwise_1 --> model_stage2_0_pointwise_2
+  model_stage2_0_scale --> view_1
+  view_1 --> mul_3
+  model_stage2_0_pointwise_2 --> mul_3
+  model_stage2_down_block_1 --> add_6
+  mul_3 --> add_6
+  model_conditioner_proj_3 --> model_stage2_affine_scale
+  model_stage2_affine_scale --> tanh_2
+  tanh_2 --> unsqueeze_8
   unsqueeze_8 --> unsqueeze_9
-  unsqueeze_9 --> invert
-  add_5 --> masked_fill
-  invert --> masked_fill
-  masked_fill --> softmax
-  softmax --> matmul_1
-  getitem_5 --> matmul_1
-  matmul_1 --> transpose_2
-  transpose_2 --> reshape_1
-  getitem --> reshape_1
-  getitem_1 --> reshape_1
-  getitem_2 --> reshape_1
-  gt --> unsqueeze_10
-  reshape_1 --> getattr_2
-  unsqueeze_10 --> to
-  getattr_2 --> to
-  reshape_1 --> mul_3
-  to --> mul_3
-  mul_3 --> transformer_0_attn_out
-  transpose --> add_6
-  transformer_0_attn_out --> add_6
-  add_6 --> transformer_0_norm2
-  transformer_0_norm2 --> transformer_0_mlp_0
-  transformer_0_mlp_0 --> transformer_0_mlp_1
-  transformer_0_mlp_1 --> transformer_0_mlp_2
-  add_6 --> add_7
-  transformer_0_mlp_2 --> add_7
-  gt --> unsqueeze_11
-  add_7 --> getattr_3
-  unsqueeze_11 --> to_1
-  getattr_3 --> to_1
+  model_conditioner_proj_3 --> model_stage2_affine_bias
+  model_stage2_affine_bias --> unsqueeze_10
+  unsqueeze_10 --> unsqueeze_11
+  unsqueeze_9 --> add_7
+  add_6 --> mul_4
   add_7 --> mul_4
-  to_1 --> mul_4
-  mul_4 --> transformer_1_norm1
-  transformer_1_norm1 --> getattr_4
-  getattr_4 --> getitem_6
-  getattr_4 --> getitem_7
-  getattr_4 --> getitem_8
-  transformer_1_norm1 --> transformer_1_attn_qkv
-  transformer_1_attn_qkv --> reshape_2
-  getitem_6 --> reshape_2
-  getitem_7 --> reshape_2
-  reshape_2 --> permute_1
-  permute_1 --> getitem_9
-  permute_1 --> getitem_10
-  permute_1 --> getitem_11
-  getitem_9 --> mul_5
-  getitem_10 --> transpose_3
-  mul_5 --> matmul_2
-  transpose_3 --> matmul_2
-  matmul_2 --> add_8
-  _rel_bias_1 --> add_8
-  gt --> unsqueeze_12
-  unsqueeze_12 --> unsqueeze_13
-  unsqueeze_13 --> invert_1
-  add_8 --> masked_fill_1
-  invert_1 --> masked_fill_1
-  masked_fill_1 --> softmax_1
-  softmax_1 --> matmul_3
-  getitem_11 --> matmul_3
-  matmul_3 --> transpose_4
-  transpose_4 --> reshape_3
-  getitem_6 --> reshape_3
-  getitem_7 --> reshape_3
-  getitem_8 --> reshape_3
-  gt --> unsqueeze_14
-  reshape_3 --> getattr_5
-  unsqueeze_14 --> to_2
-  getattr_5 --> to_2
-  reshape_3 --> mul_6
-  to_2 --> mul_6
-  mul_6 --> transformer_1_attn_out
-  mul_4 --> add_9
-  transformer_1_attn_out --> add_9
-  add_9 --> transformer_1_norm2
-  transformer_1_norm2 --> transformer_1_mlp_0
-  transformer_1_mlp_0 --> transformer_1_mlp_1
-  transformer_1_mlp_1 --> transformer_1_mlp_2
+  mul_4 --> add_8
+  unsqueeze_11 --> add_8
+  add_8 --> permute_6
+  add_8 --> getattr_4
+  getattr_4 --> getitem_3
+  permute_6 --> layer_norm_3
+  getitem_3 --> layer_norm_3
+  model_stage3_down_block_0_weight --> layer_norm_3
+  model_stage3_down_block_0_bias --> layer_norm_3
+  layer_norm_3 --> permute_7
+  permute_7 --> model_stage3_down_block_1
+  model_stage3_down_block_1 --> model_stage3_0_depthwise
+  model_stage3_0_depthwise --> permute_8
+  model_stage3_0_depthwise --> getattr_5
+  getattr_5 --> getitem_4
+  permute_8 --> layer_norm_4
+  getitem_4 --> layer_norm_4
+  model_stage3_0_norm_weight --> layer_norm_4
+  model_stage3_0_norm_bias --> layer_norm_4
+  layer_norm_4 --> permute_9
+  permute_9 --> model_stage3_0_pointwise_0
+  model_stage3_0_pointwise_0 --> model_stage3_0_pointwise_1
+  model_stage3_0_pointwise_1 --> model_stage3_0_pointwise_2
+  model_stage3_0_scale --> view_2
+  view_2 --> mul_5
+  model_stage3_0_pointwise_2 --> mul_5
+  model_stage3_down_block_1 --> add_9
+  mul_5 --> add_9
+  add_9 --> model_stage3_1_depthwise
+  model_stage3_1_depthwise --> permute_10
+  model_stage3_1_depthwise --> getattr_6
+  getattr_6 --> getitem_5
+  permute_10 --> layer_norm_5
+  getitem_5 --> layer_norm_5
+  model_stage3_1_norm_weight --> layer_norm_5
+  model_stage3_1_norm_bias --> layer_norm_5
+  layer_norm_5 --> permute_11
+  permute_11 --> model_stage3_1_pointwise_0
+  model_stage3_1_pointwise_0 --> model_stage3_1_pointwise_1
+  model_stage3_1_pointwise_1 --> model_stage3_1_pointwise_2
+  model_stage3_1_scale --> view_3
+  view_3 --> mul_6
+  model_stage3_1_pointwise_2 --> mul_6
   add_9 --> add_10
-  transformer_1_mlp_2 --> add_10
-  gt --> unsqueeze_15
-  add_10 --> getattr_6
-  unsqueeze_15 --> to_3
-  getattr_6 --> to_3
+  mul_6 --> add_10
+  model_conditioner_proj_3 --> model_stage3_affine_scale
+  model_stage3_affine_scale --> tanh_3
+  tanh_3 --> unsqueeze_12
+  unsqueeze_12 --> unsqueeze_13
+  model_conditioner_proj_3 --> model_stage3_affine_bias
+  model_stage3_affine_bias --> unsqueeze_14
+  unsqueeze_14 --> unsqueeze_15
+  unsqueeze_13 --> add_11
   add_10 --> mul_7
-  to_3 --> mul_7
-  mul_7 --> transpose_5
-  transpose_5 --> reshape_as
-  add_4 --> reshape_as
-  reshape_as --> mul_8
-  interpolate --> mul_8
-  interpolate --> sum_1
+  add_11 --> mul_7
+  mul_7 --> add_12
+  unsqueeze_15 --> add_12
+  add_12 --> permute_12
+  add_12 --> getattr_7
+  getattr_7 --> getitem_6
+  permute_12 --> layer_norm_6
+  getitem_6 --> layer_norm_6
+  model_stage4_down_block_0_weight --> layer_norm_6
+  model_stage4_down_block_0_bias --> layer_norm_6
+  layer_norm_6 --> permute_13
+  permute_13 --> model_stage4_down_block_1
+  model_stage4_down_block_1 --> model_stage4_0_depthwise
+  model_stage4_0_depthwise --> permute_14
+  model_stage4_0_depthwise --> getattr_8
+  getattr_8 --> getitem_7
+  permute_14 --> layer_norm_7
+  getitem_7 --> layer_norm_7
+  model_stage4_0_norm_weight --> layer_norm_7
+  model_stage4_0_norm_bias --> layer_norm_7
+  layer_norm_7 --> permute_15
+  permute_15 --> model_stage4_0_pointwise_0
+  model_stage4_0_pointwise_0 --> model_stage4_0_pointwise_1
+  model_stage4_0_pointwise_1 --> model_stage4_0_pointwise_2
+  model_stage4_0_scale --> view_4
+  view_4 --> mul_8
+  model_stage4_0_pointwise_2 --> mul_8
+  model_stage4_down_block_1 --> add_13
+  mul_8 --> add_13
+  model_conditioner_proj_3 --> model_stage4_affine_scale
+  model_stage4_affine_scale --> tanh_4
+  tanh_4 --> unsqueeze_16
+  unsqueeze_16 --> unsqueeze_17
+  model_conditioner_proj_3 --> model_stage4_affine_bias
+  model_stage4_affine_bias --> unsqueeze_18
+  unsqueeze_18 --> unsqueeze_19
+  unsqueeze_17 --> add_14
+  add_13 --> mul_9
+  add_14 --> mul_9
+  mul_9 --> add_15
+  unsqueeze_19 --> add_15
+  add_5 --> model_pyramid_laterals_0
+  add_8 --> model_pyramid_laterals_1
+  add_12 --> model_pyramid_laterals_2
+  add_15 --> model_pyramid_laterals_3
+  model_pyramid_laterals_2 --> getattr_9
+  getattr_9 --> getitem_8
+  model_pyramid_laterals_3 --> interpolate
+  getitem_8 --> interpolate
+  model_bifpn_0_td3_weights --> relu
+  relu --> sum_1
   sum_1 --> clamp_min
-  mul_8 --> sum_2
-  sum_2 --> truediv
+  relu --> truediv
   clamp_min --> truediv
-  image --> getitem_12
-  valid_mask --> getitem_13
-  getitem_12 --> stack
-  getitem_13 --> stack_1
-  stack --> getattr_7
-  getattr_7 --> getitem_14
-  getattr_7 --> getitem_15
-  getattr_7 --> getitem_16
-  getattr_7 --> getitem_17
-  getattr_7 --> getitem_18
-  getitem_14 --> mul_9
-  getitem_15 --> mul_9
-  stack --> reshape_4
-  mul_9 --> reshape_4
-  getitem_16 --> reshape_4
-  getitem_17 --> reshape_4
-  getitem_18 --> reshape_4
-  getitem_14 --> mul_10
-  getitem_15 --> mul_10
-  stack_1 --> reshape_5
-  mul_10 --> reshape_5
-  getitem_17 --> reshape_5
-  getitem_18 --> reshape_5
-  reshape_4 --> local_encoder_net_0_block_0
-  local_encoder_net_0_block_0 --> local_encoder_net_0_block_1
-  local_encoder_net_0_block_1 --> local_encoder_net_0_block_2
-  local_encoder_net_0_block_2 --> local_encoder_net_1_block_0
-  local_encoder_net_1_block_0 --> local_encoder_net_1_block_1
-  local_encoder_net_1_block_1 --> local_encoder_net_1_block_2
-  local_encoder_net_1_block_2 --> local_encoder_net_2_block_0
-  local_encoder_net_2_block_0 --> local_encoder_net_2_block_1
-  local_encoder_net_2_block_1 --> local_encoder_net_2_block_2
-  local_encoder_net_2_block_2 --> local_encoder_net_3_block_0
-  local_encoder_net_3_block_0 --> local_encoder_net_3_block_1
-  local_encoder_net_3_block_1 --> local_encoder_net_3_block_2
-  local_encoder_net_3_block_2 --> getattr_8
-  getattr_8 --> getitem_19
-  reshape_5 --> interpolate_1
-  getitem_19 --> interpolate_1
-  local_encoder_net_3_block_2 --> mul_11
-  interpolate_1 --> mul_11
-  interpolate_1 --> sum_3
+  model_pyramid_laterals_2 --> stack
+  interpolate --> stack
+  truediv --> view_5
+  view_5 --> mul_10
+  stack --> mul_10
+  mul_10 --> sum_2
+  sum_2 --> model_bifpn_0_td3_refine_0
+  model_bifpn_0_td3_refine_0 --> model_bifpn_0_td3_refine_1
+  model_bifpn_0_td3_refine_1 --> model_bifpn_0_td3_refine_2
+  model_bifpn_0_td3_refine_2 --> model_bifpn_0_td3_refine_3
+  model_pyramid_laterals_1 --> getattr_10
+  getattr_10 --> getitem_9
+  model_bifpn_0_td3_refine_3 --> interpolate_1
+  getitem_9 --> interpolate_1
+  model_bifpn_0_td2_weights --> relu_1
+  relu_1 --> sum_3
   sum_3 --> clamp_min_1
-  mul_11 --> sum_4
-  sum_4 --> truediv_1
+  relu_1 --> truediv_1
   clamp_min_1 --> truediv_1
-  truediv_1 --> local_encoder_project
-  local_encoder_project --> reshape_6
-  getitem_14 --> reshape_6
-  getitem_15 --> reshape_6
-  conditioner_proj_3 --> local_affine_scale
-  local_affine_scale --> tanh_2
-  tanh_2 --> unsqueeze_16
-  conditioner_proj_3 --> local_affine_bias
-  local_affine_bias --> unsqueeze_17
-  unsqueeze_16 --> add_11
-  reshape_6 --> mul_12
-  add_11 --> mul_12
-  mul_12 --> add_12
-  unsqueeze_17 --> add_12
-  add_12 --> tile_classifier
-  tile_classifier --> squeeze_1
-  stack_1 --> mean
-  mean --> ge
-  add_12 --> tile_pool_attention
-  tile_pool_attention --> squeeze_2
-  ge --> invert_2
-  squeeze_2 --> masked_fill_2
-  invert_2 --> masked_fill_2
-  masked_fill_2 --> softmax_2
-  softmax_2 --> unsqueeze_18
-  add_12 --> mul_13
-  unsqueeze_18 --> mul_13
-  mul_13 --> sum_5
-  truediv --> global_project
-  sum_5 --> local_project
-  conditioner_proj_3 --> condition_project
-  global_project --> cat
-  local_project --> cat
-  condition_project --> cat
-  cat --> fusion_gate_0
-  fusion_gate_0 --> fusion_gate_1
-  fusion_gate_1 --> fusion_gate_2
-  fusion_gate_2 --> sigmoid
-  sigmoid --> mul_14
-  global_project --> mul_14
+  model_pyramid_laterals_1 --> stack_1
+  interpolate_1 --> stack_1
+  truediv_1 --> view_6
+  view_6 --> mul_11
+  stack_1 --> mul_11
+  mul_11 --> sum_4
+  sum_4 --> model_bifpn_0_td2_refine_0
+  model_bifpn_0_td2_refine_0 --> model_bifpn_0_td2_refine_1
+  model_bifpn_0_td2_refine_1 --> model_bifpn_0_td2_refine_2
+  model_bifpn_0_td2_refine_2 --> model_bifpn_0_td2_refine_3
+  model_pyramid_laterals_0 --> getattr_11
+  getattr_11 --> getitem_10
+  model_bifpn_0_td2_refine_3 --> interpolate_2
+  getitem_10 --> interpolate_2
+  model_bifpn_0_td1_weights --> relu_2
+  relu_2 --> sum_5
+  sum_5 --> clamp_min_2
+  relu_2 --> truediv_2
+  clamp_min_2 --> truediv_2
+  model_pyramid_laterals_0 --> stack_2
+  interpolate_2 --> stack_2
+  truediv_2 --> view_7
+  view_7 --> mul_12
+  stack_2 --> mul_12
+  mul_12 --> sum_6
+  sum_6 --> model_bifpn_0_td1_refine_0
+  model_bifpn_0_td1_refine_0 --> model_bifpn_0_td1_refine_1
+  model_bifpn_0_td1_refine_1 --> model_bifpn_0_td1_refine_2
+  model_bifpn_0_td1_refine_2 --> model_bifpn_0_td1_refine_3
+  model_pyramid_laterals_1 --> getattr_12
+  getattr_12 --> getitem_11
+  model_bifpn_0_td1_refine_3 --> adaptive_max_pool2d
+  getitem_11 --> adaptive_max_pool2d
+  model_bifpn_0_out2_weights --> relu_3
+  relu_3 --> sum_7
+  sum_7 --> clamp_min_3
+  relu_3 --> truediv_3
+  clamp_min_3 --> truediv_3
+  model_pyramid_laterals_1 --> stack_3
+  model_bifpn_0_td2_refine_3 --> stack_3
+  adaptive_max_pool2d --> stack_3
+  truediv_3 --> view_8
+  view_8 --> mul_13
+  stack_3 --> mul_13
+  mul_13 --> sum_8
+  sum_8 --> model_bifpn_0_out2_refine_0
+  model_bifpn_0_out2_refine_0 --> model_bifpn_0_out2_refine_1
+  model_bifpn_0_out2_refine_1 --> model_bifpn_0_out2_refine_2
+  model_bifpn_0_out2_refine_2 --> model_bifpn_0_out2_refine_3
+  model_pyramid_laterals_2 --> getattr_13
+  getattr_13 --> getitem_12
+  model_bifpn_0_out2_refine_3 --> adaptive_max_pool2d_1
+  getitem_12 --> adaptive_max_pool2d_1
+  model_bifpn_0_out3_weights --> relu_4
+  relu_4 --> sum_9
+  sum_9 --> clamp_min_4
+  relu_4 --> truediv_4
+  clamp_min_4 --> truediv_4
+  model_pyramid_laterals_2 --> stack_4
+  model_bifpn_0_td3_refine_3 --> stack_4
+  adaptive_max_pool2d_1 --> stack_4
+  truediv_4 --> view_9
+  view_9 --> mul_14
+  stack_4 --> mul_14
+  mul_14 --> sum_10
+  sum_10 --> model_bifpn_0_out3_refine_0
+  model_bifpn_0_out3_refine_0 --> model_bifpn_0_out3_refine_1
+  model_bifpn_0_out3_refine_1 --> model_bifpn_0_out3_refine_2
+  model_bifpn_0_out3_refine_2 --> model_bifpn_0_out3_refine_3
+  model_pyramid_laterals_3 --> getattr_14
+  getattr_14 --> getitem_13
+  model_bifpn_0_out3_refine_3 --> adaptive_max_pool2d_2
+  getitem_13 --> adaptive_max_pool2d_2
+  model_bifpn_0_out4_weights --> relu_5
+  relu_5 --> sum_11
+  sum_11 --> clamp_min_5
+  relu_5 --> truediv_5
+  clamp_min_5 --> truediv_5
+  model_pyramid_laterals_3 --> stack_5
+  adaptive_max_pool2d_2 --> stack_5
+  truediv_5 --> view_10
+  view_10 --> mul_15
+  stack_5 --> mul_15
+  mul_15 --> sum_12
+  sum_12 --> model_bifpn_0_out4_refine_0
+  model_bifpn_0_out4_refine_0 --> model_bifpn_0_out4_refine_1
+  model_bifpn_0_out4_refine_1 --> model_bifpn_0_out4_refine_2
+  model_bifpn_0_out4_refine_2 --> model_bifpn_0_out4_refine_3
+  model_bifpn_0_out4_refine_3 --> getattr_15
+  getattr_15 --> getitem_14
+  valid_mask --> interpolate_3
+  getitem_14 --> interpolate_3
+  model_bifpn_0_out4_refine_3 --> adaptive_avg_pool2d
+  interpolate_3 --> adaptive_max_pool2d_3
+  adaptive_avg_pool2d --> model_global_context_project
+  model_global_context_project --> mul_16
+  adaptive_max_pool2d_3 --> mul_16
+  mul_16 --> mul_17
+  adaptive_max_pool2d_3 --> mul_17
+  adaptive_max_pool2d_3 --> sum_13
+  sum_13 --> clamp_min_6
+  mul_17 --> sum_14
+  sum_14 --> truediv_6
+  clamp_min_6 --> truediv_6
+  truediv_6 --> model_global_project
+  image --> getitem_15
+  valid_mask --> getitem_16
+  image --> getitem_17
+  valid_mask --> getitem_18
+  image --> getitem_19
+  valid_mask --> getitem_20
+  image --> getitem_21
+  valid_mask --> getitem_22
+  image --> getitem_23
+  valid_mask --> getitem_24
+  image --> getitem_25
+  valid_mask --> getitem_26
+  image --> getitem_27
+  valid_mask --> getitem_28
+  image --> getitem_29
+  valid_mask --> getitem_30
+  image --> getitem_31
+  valid_mask --> getitem_32
+  image --> getitem_33
+  valid_mask --> getitem_34
+  image --> getitem_35
+  valid_mask --> getitem_36
+  image --> getitem_37
+  valid_mask --> getitem_38
+  image --> getitem_39
+  valid_mask --> getitem_40
+  image --> getitem_41
+  valid_mask --> getitem_42
+  image --> getitem_43
+  valid_mask --> getitem_44
+  image --> getitem_45
+  valid_mask --> getitem_46
+  image --> getitem_47
+  valid_mask --> getitem_48
+  image --> getitem_49
+  valid_mask --> getitem_50
+  image --> getitem_51
+  valid_mask --> getitem_52
+  image --> getitem_53
+  valid_mask --> getitem_54
+  image --> getitem_55
+  valid_mask --> getitem_56
+  image --> getitem_57
+  valid_mask --> getitem_58
+  image --> getitem_59
+  valid_mask --> getitem_60
+  image --> getitem_61
+  valid_mask --> getitem_62
+  image --> getitem_63
+  valid_mask --> getitem_64
+  getitem_15 --> stack_6
+  getitem_17 --> stack_6
+  getitem_19 --> stack_6
+  getitem_21 --> stack_6
+  getitem_23 --> stack_6
+  getitem_25 --> stack_6
+  getitem_27 --> stack_6
+  getitem_29 --> stack_6
+  getitem_31 --> stack_6
+  getitem_33 --> stack_6
+  getitem_35 --> stack_6
+  getitem_37 --> stack_6
+  getitem_39 --> stack_6
+  getitem_41 --> stack_6
+  getitem_43 --> stack_6
+  getitem_45 --> stack_6
+  getitem_47 --> stack_6
+  getitem_49 --> stack_6
+  getitem_51 --> stack_6
+  getitem_53 --> stack_6
+  getitem_55 --> stack_6
+  getitem_57 --> stack_6
+  getitem_59 --> stack_6
+  getitem_61 --> stack_6
+  getitem_63 --> stack_6
+  getitem_16 --> stack_7
+  getitem_18 --> stack_7
+  getitem_20 --> stack_7
+  getitem_22 --> stack_7
+  getitem_24 --> stack_7
+  getitem_26 --> stack_7
+  getitem_28 --> stack_7
+  getitem_30 --> stack_7
+  getitem_32 --> stack_7
+  getitem_34 --> stack_7
+  getitem_36 --> stack_7
+  getitem_38 --> stack_7
+  getitem_40 --> stack_7
+  getitem_42 --> stack_7
+  getitem_44 --> stack_7
+  getitem_46 --> stack_7
+  getitem_48 --> stack_7
+  getitem_50 --> stack_7
+  getitem_52 --> stack_7
+  getitem_54 --> stack_7
+  getitem_56 --> stack_7
+  getitem_58 --> stack_7
+  getitem_60 --> stack_7
+  getitem_62 --> stack_7
+  getitem_64 --> stack_7
+  stack_6 --> mul_18
+  stack_7 --> mul_18
+  mul_18 --> mean
+  mean --> getattr_16
+  getattr_16 --> getitem_65
+  mean --> getattr_17
+  getattr_17 --> getitem_66
+  mean --> view_11
+  getitem_65 --> view_11
+  getitem_66 --> view_11
+  view_11 --> mul_19
+  _tensor_constant0 --> mul_19
+  mul_19 --> sum_15
+  sum_15 --> truediv_7
+  tile_mask_counts --> truediv_7
+  truediv_7 --> mul_20
+  valid_mask --> mul_20
+  mul_20 --> mean_1
+  mean_1 --> unsqueeze_20
+  model_global_project --> getattr_18
+  getattr_18 --> getitem_67
+  unsqueeze_20 --> expand
+  getitem_67 --> expand
+  model_conditioner_proj_3 --> model_condition_project
+  model_global_project --> cat
+  expand --> cat
+  model_condition_project --> cat
+  cat --> model_fusion_gate_0
+  model_fusion_gate_0 --> model_fusion_gate_1
+  model_fusion_gate_1 --> model_fusion_gate_2
+  model_fusion_gate_2 --> sigmoid
+  sigmoid --> mul_21
+  model_global_project --> mul_21
   sigmoid --> sub
-  sub --> mul_15
-  local_project --> mul_15
-  mul_14 --> add_13
-  mul_15 --> add_13
-  condition_project --> mul_16
-  add_13 --> add_14
-  mul_16 --> add_14
-  add_14 --> reject_head
-  reject_head --> squeeze_3
-  add_14 --> defect_head
-  reshape_as --> global_heatmap_head
-  global_heatmap_head --> interpolate_2
-  squeeze_1 --> getattr_9
-  getattr_9 --> getitem_20
-  squeeze_1 --> getattr_10
-  getattr_10 --> getitem_21
-  squeeze_1 --> view
-  getitem_20 --> view
-  getitem_21 --> view
-  view --> mul_17
-  _tensor_constant0 --> mul_17
-  mul_17 --> sum_6
-  sum_6 --> truediv_2
-  tile_mask_counts --> truediv_2
-  truediv_2 --> mul_18
-  valid_mask --> mul_18
-  interpolate_2 --> mul_19
-  mul_18 --> mul_20
-  mul_19 --> add_15
-  mul_20 --> add_15
-  add_15 --> sigmoid_1
-  sigmoid_1 --> mul_21
-  valid_mask --> mul_21
-  squeeze_3 --> output
-  defect_head --> output
-  mul_21 --> output
+  sub --> mul_22
+  expand --> mul_22
+  mul_21 --> add_16
+  mul_22 --> add_16
+  model_condition_project --> mul_23
+  add_16 --> add_17
+  mul_23 --> add_17
+  add_17 --> model_reject_head
+  model_reject_head --> squeeze
+  add_17 --> model_defect_head
+  model_bifpn_0_td1_refine_3 --> model_global_heatmap_head_0
+  model_global_heatmap_head_0 --> model_global_heatmap_head_1
+  model_global_heatmap_head_1 --> model_global_heatmap_head_2
+  model_global_heatmap_head_2 --> interpolate_4
+  interpolate_4 --> mul_24
+  mul_20 --> mul_25
+  mul_24 --> add_18
+  mul_25 --> add_18
+  add_18 --> sigmoid_1
+  sigmoid_1 --> mul_26
+  valid_mask --> mul_26
+  squeeze --> output
+  model_defect_head --> output
+  mul_26 --> output

@@ -28,6 +28,7 @@ from .evaluation import benchmark_manifest, build_calibration_report, evaluate_p
 from .explainability import build_audit_report, build_explanation_bundle
 from .graphing import export_model_graph
 from .preprocessing import PreparedImage, preprocess_image, preprocess_sample, stack_prepared_images
+from .pretrain_registry import PretrainDatasetPreset, get_pretrain_dataset_preset, list_pretrain_dataset_presets
 from .runners import (
     StageResult,
     run_benchmark_stage,
@@ -101,6 +102,7 @@ __all__ = [
     "ModelInput",
     "ModelOutput",
     "PreparedImage",
+    "PretrainDatasetPreset",
     "PredictionRecord",
     "predict_dataset",
     "register_synthetic_recipe",
@@ -137,6 +139,8 @@ __all__ = [
     "preprocess_image",
     "preprocess_sample",
     "stack_prepared_images",
+    "get_pretrain_dataset_preset",
+    "list_pretrain_dataset_presets",
     "verify_defect_coverage",
     "write_summary",
 ]

@@ -25,9 +25,13 @@ from greymodel.runners import (
     _collate_for_training,
     _create_progress_bar,
     _move_training_batch_to_device,
+    _memory_metrics,
+    _resolve_strategy,
     _stage_uses_partial_backbone,
     _wrap_modules_for_ddp,
 )
+from greymodel.training import sample_pretrain_crops
+from greymodel.types import TensorBatch
 
 
 def _write_sample(root: Path, relative_path: str, image: np.ndarray, sidecar: dict | None = None) -> Path:
@@ -146,7 +150,7 @@ def test_progress_bar_is_optional_and_rank_safe(monkeypatch: pytest.MonkeyPatch)
 
     progress = _create_progress_bar(
         TrainingConfig(show_progress=True),
-        DistributedContext(enabled=False, rank=0, world_size=1, local_rank=0, device=torch.device("cpu"), backend="gloo"),
+        DistributedContext(enabled=False, rank=0, world_size=1, local_rank=0, device=torch.device("cpu"), backend="gloo", strategy="single"),
         total=5,
         desc="pretrain epoch 1/1",
     )
@@ -156,7 +160,7 @@ def test_progress_bar_is_optional_and_rank_safe(monkeypatch: pytest.MonkeyPatch)
 
     disabled = _create_progress_bar(
         TrainingConfig(show_progress=False),
-        DistributedContext(enabled=False, rank=0, world_size=1, local_rank=0, device=torch.device("cpu"), backend="gloo"),
+        DistributedContext(enabled=False, rank=0, world_size=1, local_rank=0, device=torch.device("cpu"), backend="gloo", strategy="single"),
         total=5,
         desc="hidden",
     )
@@ -175,7 +179,7 @@ def test_partial_backbone_stages_enable_find_unused_parameters_in_ddp(monkeypatc
         "greymodel.runners._require_torch",
         lambda: (torch, None, _FakeDDP, None),
     )
-    context = DistributedContext(enabled=True, rank=0, world_size=2, local_rank=0, device=torch.device("cpu"), backend="gloo")
+    context = DistributedContext(enabled=True, rank=0, world_size=2, local_rank=0, device=torch.device("cpu"), backend="gloo", strategy="ddp")
     backbone = torch.nn.Linear(4, 4)
     auxiliary = {"reconstruction_head": torch.nn.Linear(4, 1)}
 
@@ -188,6 +192,50 @@ def test_partial_backbone_stages_enable_find_unused_parameters_in_ddp(monkeypatc
     assert _stage_uses_partial_backbone("pretrain") is True
     assert _stage_uses_partial_backbone("domain_adapt") is True
     assert _stage_uses_partial_backbone("finetune") is False
+
+
+def test_training_config_defaults_to_fsdp_and_patch_pretrain_features() -> None:
+    config = TrainingConfig()
+
+    assert config.distributed_strategy == "fsdp"
+    assert config.activation_checkpointing is True
+    assert config.pretrain_crop_size == 512
+    assert config.pretrain_num_crops == 1
+    assert config.max_global_feature_grid == 16
+
+
+def test_patch_pretrain_sampler_is_mask_aware() -> None:
+    batch = TensorBatch(
+        image=torch.zeros((1, 1, 128, 128), dtype=torch.float32),
+        valid_mask=torch.zeros((1, 1, 128, 128), dtype=torch.float32),
+        station_id=torch.zeros((1,), dtype=torch.long),
+        geometry_id=torch.zeros((1,), dtype=torch.long),
+        metadata={},
+    )
+    batch.valid_mask[:, :, 16:112, 16:112] = 1.0
+
+    sampled = sample_pretrain_crops(batch, TrainingConfig(pretrain_crop_size=64, pretrain_num_crops=1, pretrain_crop_scales=(1.0,)))
+
+    assert sampled.image.shape[-1] == sampled.image.shape[-2] == 64
+    assert float(sampled.valid_mask.mean().item()) > 0.2
+
+
+def test_resolve_strategy_prefers_fsdp_on_cuda_and_ddp_on_cpu() -> None:
+    fsdp = _resolve_strategy(TrainingConfig(distributed_strategy="fsdp"), enabled=True, device=torch.device("cuda"))
+    ddp = _resolve_strategy(TrainingConfig(distributed_strategy="fsdp"), enabled=True, device=torch.device("cpu"))
+    single = _resolve_strategy(TrainingConfig(), enabled=False, device=torch.device("cpu"))
+
+    assert fsdp == "fsdp"
+    assert ddp == "ddp"
+    assert single == "single"
+
+
+def test_memory_metrics_are_empty_on_cpu() -> None:
+    metrics = _memory_metrics(
+        DistributedContext(enabled=False, rank=0, world_size=1, local_rank=0, device=torch.device("cpu"), backend="gloo", strategy="single")
+    )
+
+    assert metrics == {}
 
 
 def test_pretraining_stage_writes_checkpoint_and_metrics(tmp_path: Path) -> None:

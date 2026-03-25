@@ -1,7 +1,7 @@
 {
   "image_shape": [
-    64,
-    64
+    256,
+    256
   ],
   "model_name": "GrayInspect-H-Lite",
   "nodes": [
@@ -33,22 +33,22 @@
       "inputs": [
         "station_id"
       ],
-      "name": "conditioner_station_embedding",
+      "name": "model_conditioner_station_embedding",
       "op": "call_module",
-      "target": "conditioner.station_embedding"
+      "target": "model.conditioner.station_embedding"
     },
     {
       "inputs": [
         "geometry_id"
       ],
-      "name": "conditioner_geometry_embedding",
+      "name": "model_conditioner_geometry_embedding",
       "op": "call_module",
-      "target": "conditioner.geometry_embedding"
+      "target": "model.conditioner.geometry_embedding"
     },
     {
       "inputs": [
-        "conditioner_station_embedding",
-        "conditioner_geometry_embedding"
+        "model_conditioner_station_embedding",
+        "model_conditioner_geometry_embedding"
       ],
       "name": "add",
       "op": "call_function",
@@ -58,121 +58,97 @@
       "inputs": [
         "add"
       ],
-      "name": "conditioner_proj_0",
+      "name": "model_conditioner_proj_0",
       "op": "call_module",
-      "target": "conditioner.proj.0"
+      "target": "model.conditioner.proj.0"
     },
     {
       "inputs": [
-        "conditioner_proj_0"
+        "model_conditioner_proj_0"
       ],
-      "name": "conditioner_proj_1",
+      "name": "model_conditioner_proj_1",
       "op": "call_module",
-      "target": "conditioner.proj.1"
+      "target": "model.conditioner.proj.1"
     },
     {
       "inputs": [
-        "conditioner_proj_1"
+        "model_conditioner_proj_1"
       ],
-      "name": "conditioner_proj_2",
+      "name": "model_conditioner_proj_2",
       "op": "call_module",
-      "target": "conditioner.proj.2"
+      "target": "model.conditioner.proj.2"
     },
     {
       "inputs": [
-        "conditioner_proj_2"
+        "model_conditioner_proj_2"
       ],
-      "name": "conditioner_proj_3",
+      "name": "model_conditioner_proj_3",
       "op": "call_module",
-      "target": "conditioner.proj.3"
+      "target": "model.conditioner.proj.3"
     },
     {
       "inputs": [
         "image"
       ],
-      "name": "stem_0_block_0",
+      "name": "model_stem_0_block_0",
       "op": "call_module",
-      "target": "stem.0.block.0"
+      "target": "model.stem.0.block.0"
     },
     {
       "inputs": [
-        "stem_0_block_0"
+        "model_stem_0_block_0"
       ],
-      "name": "stem_0_block_1",
+      "name": "model_stem_0_block_1",
       "op": "call_module",
-      "target": "stem.0.block.1"
+      "target": "model.stem.0.block.1"
     },
     {
       "inputs": [
-        "stem_0_block_1"
+        "model_stem_0_block_1"
       ],
-      "name": "stem_0_block_2",
+      "name": "model_stem_0_block_2",
       "op": "call_module",
-      "target": "stem.0.block.2"
+      "target": "model.stem.0.block.2"
     },
     {
       "inputs": [
-        "stem_0_block_2"
+        "model_stem_0_block_2"
       ],
-      "name": "stem_1_block_0",
+      "name": "model_stem_1_block_0",
       "op": "call_module",
-      "target": "stem.1.block.0"
+      "target": "model.stem.1.block.0"
     },
     {
       "inputs": [
-        "stem_1_block_0"
+        "model_stem_1_block_0"
       ],
-      "name": "stem_1_block_1",
+      "name": "model_stem_1_block_1",
       "op": "call_module",
-      "target": "stem.1.block.1"
+      "target": "model.stem.1.block.1"
     },
     {
       "inputs": [
-        "stem_1_block_1"
+        "model_stem_1_block_1"
       ],
-      "name": "stem_1_block_2",
+      "name": "model_stem_1_block_2",
       "op": "call_module",
-      "target": "stem.1.block.2"
+      "target": "model.stem.1.block.2"
     },
     {
       "inputs": [
-        "stem_1_block_2"
+        "model_conditioner_proj_3"
       ],
-      "name": "stem_2_block_0",
+      "name": "model_stem_affine_scale",
       "op": "call_module",
-      "target": "stem.2.block.0"
+      "target": "model.stem_affine.scale"
     },
     {
       "inputs": [
-        "stem_2_block_0"
-      ],
-      "name": "stem_2_block_1",
-      "op": "call_module",
-      "target": "stem.2.block.1"
-    },
-    {
-      "inputs": [
-        "stem_2_block_1"
-      ],
-      "name": "stem_2_block_2",
-      "op": "call_module",
-      "target": "stem.2.block.2"
-    },
-    {
-      "inputs": [
-        "conditioner_proj_3"
-      ],
-      "name": "stem_affine_scale",
-      "op": "call_module",
-      "target": "stem_affine.scale"
-    },
-    {
-      "inputs": [
-        "stem_affine_scale"
+        "model_stem_affine_scale"
       ],
       "name": "tanh",
       "op": "call_function",
-      "target": "<built-in method tanh of type object at 0x00007FF9AC200E90>"
+      "target": "<built-in method tanh of type object at 0x00007FF812C1EE90>"
     },
     {
       "inputs": [
@@ -192,15 +168,15 @@
     },
     {
       "inputs": [
-        "conditioner_proj_3"
+        "model_conditioner_proj_3"
       ],
-      "name": "stem_affine_bias",
+      "name": "model_stem_affine_bias",
       "op": "call_module",
-      "target": "stem_affine.bias"
+      "target": "model.stem_affine.bias"
     },
     {
       "inputs": [
-        "stem_affine_bias"
+        "model_stem_affine_bias"
       ],
       "name": "unsqueeze_2",
       "op": "call_method",
@@ -224,7 +200,7 @@
     },
     {
       "inputs": [
-        "stem_2_block_2",
+        "model_stem_1_block_2",
         "add_1"
       ],
       "name": "mul",
@@ -244,65 +220,144 @@
       "inputs": [
         "add_2"
       ],
-      "name": "global_downsample_0_block_0",
+      "name": "model_stage1_proj",
       "op": "call_module",
-      "target": "global_downsample.0.block.0"
+      "target": "model.stage1_proj"
     },
     {
       "inputs": [
-        "global_downsample_0_block_0"
+        "model_stage1_proj"
       ],
-      "name": "global_downsample_0_block_1",
+      "name": "model_stage1_0_depthwise",
       "op": "call_module",
-      "target": "global_downsample.0.block.1"
+      "target": "model.stage1.0.depthwise"
     },
     {
       "inputs": [
-        "global_downsample_0_block_1"
+        "model_stage1_0_depthwise"
       ],
-      "name": "global_downsample_0_block_2",
-      "op": "call_module",
-      "target": "global_downsample.0.block.2"
+      "name": "permute",
+      "op": "call_method",
+      "target": "permute"
     },
     {
       "inputs": [
-        "global_downsample_0_block_2"
+        "model_stage1_0_depthwise"
       ],
-      "name": "global_downsample_1_block_0",
-      "op": "call_module",
-      "target": "global_downsample.1.block.0"
+      "name": "getattr_1",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
     },
     {
       "inputs": [
-        "global_downsample_1_block_0"
+        "getattr_1"
       ],
-      "name": "global_downsample_1_block_1",
-      "op": "call_module",
-      "target": "global_downsample.1.block.1"
+      "name": "getitem",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage1_0_norm_weight",
+      "op": "get_attr",
+      "target": "model.stage1.0.norm.weight"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage1_0_norm_bias",
+      "op": "get_attr",
+      "target": "model.stage1.0.norm.bias"
     },
     {
       "inputs": [
-        "global_downsample_1_block_1"
+        "permute",
+        "getitem",
+        "model_stage1_0_norm_weight",
+        "model_stage1_0_norm_bias"
       ],
-      "name": "global_downsample_1_block_2",
-      "op": "call_module",
-      "target": "global_downsample.1.block.2"
+      "name": "layer_norm",
+      "op": "call_function",
+      "target": "<function layer_norm at 0x000001D174CBBE50>"
     },
     {
       "inputs": [
-        "conditioner_proj_3"
+        "layer_norm"
       ],
-      "name": "global_affine_scale",
-      "op": "call_module",
-      "target": "global_affine.scale"
+      "name": "permute_1",
+      "op": "call_method",
+      "target": "permute"
     },
     {
       "inputs": [
-        "global_affine_scale"
+        "permute_1"
+      ],
+      "name": "model_stage1_0_pointwise_0",
+      "op": "call_module",
+      "target": "model.stage1.0.pointwise.0"
+    },
+    {
+      "inputs": [
+        "model_stage1_0_pointwise_0"
+      ],
+      "name": "model_stage1_0_pointwise_1",
+      "op": "call_module",
+      "target": "model.stage1.0.pointwise.1"
+    },
+    {
+      "inputs": [
+        "model_stage1_0_pointwise_1"
+      ],
+      "name": "model_stage1_0_pointwise_2",
+      "op": "call_module",
+      "target": "model.stage1.0.pointwise.2"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage1_0_scale",
+      "op": "get_attr",
+      "target": "model.stage1.0.scale"
+    },
+    {
+      "inputs": [
+        "model_stage1_0_scale"
+      ],
+      "name": "view",
+      "op": "call_method",
+      "target": "view"
+    },
+    {
+      "inputs": [
+        "view",
+        "model_stage1_0_pointwise_2"
+      ],
+      "name": "mul_1",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "model_stage1_proj",
+        "mul_1"
+      ],
+      "name": "add_3",
+      "op": "call_function",
+      "target": "<built-in function add>"
+    },
+    {
+      "inputs": [
+        "model_conditioner_proj_3"
+      ],
+      "name": "model_stage1_affine_scale",
+      "op": "call_module",
+      "target": "model.stage1_affine.scale"
+    },
+    {
+      "inputs": [
+        "model_stage1_affine_scale"
       ],
       "name": "tanh_1",
       "op": "call_function",
-      "target": "<built-in method tanh of type object at 0x00007FF9AC200E90>"
+      "target": "<built-in method tanh of type object at 0x00007FF812C1EE90>"
     },
     {
       "inputs": [
@@ -322,15 +377,15 @@
     },
     {
       "inputs": [
-        "conditioner_proj_3"
+        "model_conditioner_proj_3"
       ],
-      "name": "global_affine_bias",
+      "name": "model_stage1_affine_bias",
       "op": "call_module",
-      "target": "global_affine.bias"
+      "target": "model.stage1_affine.bias"
     },
     {
       "inputs": [
-        "global_affine_bias"
+        "model_stage1_affine_bias"
       ],
       "name": "unsqueeze_6",
       "op": "call_method",
@@ -348,169 +403,14 @@
       "inputs": [
         "unsqueeze_5"
       ],
-      "name": "add_3",
-      "op": "call_function",
-      "target": "<built-in function add>"
-    },
-    {
-      "inputs": [
-        "global_downsample_1_block_2",
-        "add_3"
-      ],
-      "name": "mul_1",
-      "op": "call_function",
-      "target": "<built-in function mul>"
-    },
-    {
-      "inputs": [
-        "mul_1",
-        "unsqueeze_7"
-      ],
       "name": "add_4",
       "op": "call_function",
       "target": "<built-in function add>"
     },
     {
       "inputs": [
-        "valid_mask"
-      ],
-      "name": "interpolate",
-      "op": "call_function",
-      "target": "<function interpolate at 0x00000234EBEA25E0>"
-    },
-    {
-      "inputs": [
+        "add_3",
         "add_4"
-      ],
-      "name": "flatten",
-      "op": "call_method",
-      "target": "flatten"
-    },
-    {
-      "inputs": [
-        "flatten"
-      ],
-      "name": "transpose",
-      "op": "call_method",
-      "target": "transpose"
-    },
-    {
-      "inputs": [
-        "interpolate"
-      ],
-      "name": "flatten_1",
-      "op": "call_method",
-      "target": "flatten"
-    },
-    {
-      "inputs": [
-        "flatten_1"
-      ],
-      "name": "squeeze",
-      "op": "call_method",
-      "target": "squeeze"
-    },
-    {
-      "inputs": [
-        "squeeze"
-      ],
-      "name": "gt",
-      "op": "call_function",
-      "target": "<built-in function gt>"
-    },
-    {
-      "inputs": [
-        "transpose"
-      ],
-      "name": "transformer_0_norm1",
-      "op": "call_module",
-      "target": "transformer.0.norm1"
-    },
-    {
-      "inputs": [
-        "transformer_0_norm1"
-      ],
-      "name": "getattr_1",
-      "op": "call_function",
-      "target": "<built-in function getattr>"
-    },
-    {
-      "inputs": [
-        "getattr_1"
-      ],
-      "name": "getitem",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "getattr_1"
-      ],
-      "name": "getitem_1",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "getattr_1"
-      ],
-      "name": "getitem_2",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "transformer_0_norm1"
-      ],
-      "name": "transformer_0_attn_qkv",
-      "op": "call_module",
-      "target": "transformer.0.attn.qkv"
-    },
-    {
-      "inputs": [
-        "transformer_0_attn_qkv",
-        "getitem",
-        "getitem_1"
-      ],
-      "name": "reshape",
-      "op": "call_method",
-      "target": "reshape"
-    },
-    {
-      "inputs": [
-        "reshape"
-      ],
-      "name": "permute",
-      "op": "call_method",
-      "target": "permute"
-    },
-    {
-      "inputs": [
-        "permute"
-      ],
-      "name": "getitem_3",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "permute"
-      ],
-      "name": "getitem_4",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "permute"
-      ],
-      "name": "getitem_5",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "getitem_3"
       ],
       "name": "mul_2",
       "op": "call_function",
@@ -518,31 +418,8 @@
     },
     {
       "inputs": [
-        "getitem_4"
-      ],
-      "name": "transpose_1",
-      "op": "call_method",
-      "target": "transpose"
-    },
-    {
-      "inputs": [
         "mul_2",
-        "transpose_1"
-      ],
-      "name": "matmul",
-      "op": "call_function",
-      "target": "<built-in method matmul of type object at 0x00007FF9AC200E90>"
-    },
-    {
-      "inputs": [],
-      "name": "_rel_bias_0",
-      "op": "get_attr",
-      "target": "_rel_bias_0"
-    },
-    {
-      "inputs": [
-        "matmul",
-        "_rel_bias_0"
+        "unsqueeze_7"
       ],
       "name": "add_5",
       "op": "call_function",
@@ -550,7 +427,205 @@
     },
     {
       "inputs": [
-        "gt"
+        "add_5"
+      ],
+      "name": "permute_2",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "add_5"
+      ],
+      "name": "getattr_2",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_2"
+      ],
+      "name": "getitem_1",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage2_down_block_0_weight",
+      "op": "get_attr",
+      "target": "model.stage2_down.block.0.weight"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage2_down_block_0_bias",
+      "op": "get_attr",
+      "target": "model.stage2_down.block.0.bias"
+    },
+    {
+      "inputs": [
+        "permute_2",
+        "getitem_1",
+        "model_stage2_down_block_0_weight",
+        "model_stage2_down_block_0_bias"
+      ],
+      "name": "layer_norm_1",
+      "op": "call_function",
+      "target": "<function layer_norm at 0x000001D174CBBE50>"
+    },
+    {
+      "inputs": [
+        "layer_norm_1"
+      ],
+      "name": "permute_3",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "permute_3"
+      ],
+      "name": "model_stage2_down_block_1",
+      "op": "call_module",
+      "target": "model.stage2_down.block.1"
+    },
+    {
+      "inputs": [
+        "model_stage2_down_block_1"
+      ],
+      "name": "model_stage2_0_depthwise",
+      "op": "call_module",
+      "target": "model.stage2.0.depthwise"
+    },
+    {
+      "inputs": [
+        "model_stage2_0_depthwise"
+      ],
+      "name": "permute_4",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "model_stage2_0_depthwise"
+      ],
+      "name": "getattr_3",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_3"
+      ],
+      "name": "getitem_2",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage2_0_norm_weight",
+      "op": "get_attr",
+      "target": "model.stage2.0.norm.weight"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage2_0_norm_bias",
+      "op": "get_attr",
+      "target": "model.stage2.0.norm.bias"
+    },
+    {
+      "inputs": [
+        "permute_4",
+        "getitem_2",
+        "model_stage2_0_norm_weight",
+        "model_stage2_0_norm_bias"
+      ],
+      "name": "layer_norm_2",
+      "op": "call_function",
+      "target": "<function layer_norm at 0x000001D174CBBE50>"
+    },
+    {
+      "inputs": [
+        "layer_norm_2"
+      ],
+      "name": "permute_5",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "permute_5"
+      ],
+      "name": "model_stage2_0_pointwise_0",
+      "op": "call_module",
+      "target": "model.stage2.0.pointwise.0"
+    },
+    {
+      "inputs": [
+        "model_stage2_0_pointwise_0"
+      ],
+      "name": "model_stage2_0_pointwise_1",
+      "op": "call_module",
+      "target": "model.stage2.0.pointwise.1"
+    },
+    {
+      "inputs": [
+        "model_stage2_0_pointwise_1"
+      ],
+      "name": "model_stage2_0_pointwise_2",
+      "op": "call_module",
+      "target": "model.stage2.0.pointwise.2"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage2_0_scale",
+      "op": "get_attr",
+      "target": "model.stage2.0.scale"
+    },
+    {
+      "inputs": [
+        "model_stage2_0_scale"
+      ],
+      "name": "view_1",
+      "op": "call_method",
+      "target": "view"
+    },
+    {
+      "inputs": [
+        "view_1",
+        "model_stage2_0_pointwise_2"
+      ],
+      "name": "mul_3",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "model_stage2_down_block_1",
+        "mul_3"
+      ],
+      "name": "add_6",
+      "op": "call_function",
+      "target": "<built-in function add>"
+    },
+    {
+      "inputs": [
+        "model_conditioner_proj_3"
+      ],
+      "name": "model_stage2_affine_scale",
+      "op": "call_module",
+      "target": "model.stage2_affine.scale"
+    },
+    {
+      "inputs": [
+        "model_stage2_affine_scale"
+      ],
+      "name": "tanh_2",
+      "op": "call_function",
+      "target": "<built-in method tanh of type object at 0x00007FF812C1EE90>"
+    },
+    {
+      "inputs": [
+        "tanh_2"
       ],
       "name": "unsqueeze_8",
       "op": "call_method",
@@ -566,60 +641,15 @@
     },
     {
       "inputs": [
-        "unsqueeze_9"
+        "model_conditioner_proj_3"
       ],
-      "name": "invert",
-      "op": "call_function",
-      "target": "<built-in function invert>"
+      "name": "model_stage2_affine_bias",
+      "op": "call_module",
+      "target": "model.stage2_affine.bias"
     },
     {
       "inputs": [
-        "add_5",
-        "invert"
-      ],
-      "name": "masked_fill",
-      "op": "call_method",
-      "target": "masked_fill"
-    },
-    {
-      "inputs": [
-        "masked_fill"
-      ],
-      "name": "softmax",
-      "op": "call_function",
-      "target": "<built-in method softmax of type object at 0x00007FF9AC200E90>"
-    },
-    {
-      "inputs": [
-        "softmax",
-        "getitem_5"
-      ],
-      "name": "matmul_1",
-      "op": "call_function",
-      "target": "<built-in method matmul of type object at 0x00007FF9AC200E90>"
-    },
-    {
-      "inputs": [
-        "matmul_1"
-      ],
-      "name": "transpose_2",
-      "op": "call_method",
-      "target": "transpose"
-    },
-    {
-      "inputs": [
-        "transpose_2",
-        "getitem",
-        "getitem_1",
-        "getitem_2"
-      ],
-      "name": "reshape_1",
-      "op": "call_method",
-      "target": "reshape"
-    },
-    {
-      "inputs": [
-        "gt"
+        "model_stage2_affine_bias"
       ],
       "name": "unsqueeze_10",
       "op": "call_method",
@@ -627,91 +657,7 @@
     },
     {
       "inputs": [
-        "reshape_1"
-      ],
-      "name": "getattr_2",
-      "op": "call_function",
-      "target": "<built-in function getattr>"
-    },
-    {
-      "inputs": [
-        "unsqueeze_10",
-        "getattr_2"
-      ],
-      "name": "to",
-      "op": "call_method",
-      "target": "to"
-    },
-    {
-      "inputs": [
-        "reshape_1",
-        "to"
-      ],
-      "name": "mul_3",
-      "op": "call_function",
-      "target": "<built-in function mul>"
-    },
-    {
-      "inputs": [
-        "mul_3"
-      ],
-      "name": "transformer_0_attn_out",
-      "op": "call_module",
-      "target": "transformer.0.attn.out"
-    },
-    {
-      "inputs": [
-        "transpose",
-        "transformer_0_attn_out"
-      ],
-      "name": "add_6",
-      "op": "call_function",
-      "target": "<built-in function add>"
-    },
-    {
-      "inputs": [
-        "add_6"
-      ],
-      "name": "transformer_0_norm2",
-      "op": "call_module",
-      "target": "transformer.0.norm2"
-    },
-    {
-      "inputs": [
-        "transformer_0_norm2"
-      ],
-      "name": "transformer_0_mlp_0",
-      "op": "call_module",
-      "target": "transformer.0.mlp.0"
-    },
-    {
-      "inputs": [
-        "transformer_0_mlp_0"
-      ],
-      "name": "transformer_0_mlp_1",
-      "op": "call_module",
-      "target": "transformer.0.mlp.1"
-    },
-    {
-      "inputs": [
-        "transformer_0_mlp_1"
-      ],
-      "name": "transformer_0_mlp_2",
-      "op": "call_module",
-      "target": "transformer.0.mlp.2"
-    },
-    {
-      "inputs": [
-        "add_6",
-        "transformer_0_mlp_2"
-      ],
-      "name": "add_7",
-      "op": "call_function",
-      "target": "<built-in function add>"
-    },
-    {
-      "inputs": [
-        "gt"
+        "unsqueeze_10"
       ],
       "name": "unsqueeze_11",
       "op": "call_method",
@@ -719,25 +665,16 @@
     },
     {
       "inputs": [
-        "add_7"
+        "unsqueeze_9"
       ],
-      "name": "getattr_3",
+      "name": "add_7",
       "op": "call_function",
-      "target": "<built-in function getattr>"
+      "target": "<built-in function add>"
     },
     {
       "inputs": [
-        "unsqueeze_11",
-        "getattr_3"
-      ],
-      "name": "to_1",
-      "op": "call_method",
-      "target": "to"
-    },
-    {
-      "inputs": [
-        "add_7",
-        "to_1"
+        "add_6",
+        "add_7"
       ],
       "name": "mul_4",
       "op": "call_function",
@@ -745,15 +682,24 @@
     },
     {
       "inputs": [
-        "mul_4"
+        "mul_4",
+        "unsqueeze_11"
       ],
-      "name": "transformer_1_norm1",
-      "op": "call_module",
-      "target": "transformer.1.norm1"
+      "name": "add_8",
+      "op": "call_function",
+      "target": "<built-in function add>"
     },
     {
       "inputs": [
-        "transformer_1_norm1"
+        "add_8"
+      ],
+      "name": "permute_6",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "add_8"
       ],
       "name": "getattr_4",
       "op": "call_function",
@@ -763,79 +709,154 @@
       "inputs": [
         "getattr_4"
       ],
-      "name": "getitem_6",
+      "name": "getitem_3",
       "op": "call_function",
       "target": "<built-in function getitem>"
     },
     {
+      "inputs": [],
+      "name": "model_stage3_down_block_0_weight",
+      "op": "get_attr",
+      "target": "model.stage3_down.block.0.weight"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage3_down_block_0_bias",
+      "op": "get_attr",
+      "target": "model.stage3_down.block.0.bias"
+    },
+    {
       "inputs": [
-        "getattr_4"
+        "permute_6",
+        "getitem_3",
+        "model_stage3_down_block_0_weight",
+        "model_stage3_down_block_0_bias"
       ],
-      "name": "getitem_7",
+      "name": "layer_norm_3",
       "op": "call_function",
-      "target": "<built-in function getitem>"
+      "target": "<function layer_norm at 0x000001D174CBBE50>"
     },
     {
       "inputs": [
-        "getattr_4"
+        "layer_norm_3"
       ],
-      "name": "getitem_8",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "transformer_1_norm1"
-      ],
-      "name": "transformer_1_attn_qkv",
-      "op": "call_module",
-      "target": "transformer.1.attn.qkv"
-    },
-    {
-      "inputs": [
-        "transformer_1_attn_qkv",
-        "getitem_6",
-        "getitem_7"
-      ],
-      "name": "reshape_2",
-      "op": "call_method",
-      "target": "reshape"
-    },
-    {
-      "inputs": [
-        "reshape_2"
-      ],
-      "name": "permute_1",
+      "name": "permute_7",
       "op": "call_method",
       "target": "permute"
     },
     {
       "inputs": [
-        "permute_1"
+        "permute_7"
       ],
-      "name": "getitem_9",
+      "name": "model_stage3_down_block_1",
+      "op": "call_module",
+      "target": "model.stage3_down.block.1"
+    },
+    {
+      "inputs": [
+        "model_stage3_down_block_1"
+      ],
+      "name": "model_stage3_0_depthwise",
+      "op": "call_module",
+      "target": "model.stage3.0.depthwise"
+    },
+    {
+      "inputs": [
+        "model_stage3_0_depthwise"
+      ],
+      "name": "permute_8",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "model_stage3_0_depthwise"
+      ],
+      "name": "getattr_5",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_5"
+      ],
+      "name": "getitem_4",
       "op": "call_function",
       "target": "<built-in function getitem>"
     },
     {
-      "inputs": [
-        "permute_1"
-      ],
-      "name": "getitem_10",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
+      "inputs": [],
+      "name": "model_stage3_0_norm_weight",
+      "op": "get_attr",
+      "target": "model.stage3.0.norm.weight"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage3_0_norm_bias",
+      "op": "get_attr",
+      "target": "model.stage3.0.norm.bias"
     },
     {
       "inputs": [
-        "permute_1"
+        "permute_8",
+        "getitem_4",
+        "model_stage3_0_norm_weight",
+        "model_stage3_0_norm_bias"
       ],
-      "name": "getitem_11",
+      "name": "layer_norm_4",
       "op": "call_function",
-      "target": "<built-in function getitem>"
+      "target": "<function layer_norm at 0x000001D174CBBE50>"
     },
     {
       "inputs": [
-        "getitem_9"
+        "layer_norm_4"
+      ],
+      "name": "permute_9",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "permute_9"
+      ],
+      "name": "model_stage3_0_pointwise_0",
+      "op": "call_module",
+      "target": "model.stage3.0.pointwise.0"
+    },
+    {
+      "inputs": [
+        "model_stage3_0_pointwise_0"
+      ],
+      "name": "model_stage3_0_pointwise_1",
+      "op": "call_module",
+      "target": "model.stage3.0.pointwise.1"
+    },
+    {
+      "inputs": [
+        "model_stage3_0_pointwise_1"
+      ],
+      "name": "model_stage3_0_pointwise_2",
+      "op": "call_module",
+      "target": "model.stage3.0.pointwise.2"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage3_0_scale",
+      "op": "get_attr",
+      "target": "model.stage3.0.scale"
+    },
+    {
+      "inputs": [
+        "model_stage3_0_scale"
+      ],
+      "name": "view_2",
+      "op": "call_method",
+      "target": "view"
+    },
+    {
+      "inputs": [
+        "view_2",
+        "model_stage3_0_pointwise_2"
       ],
       "name": "mul_5",
       "op": "call_function",
@@ -843,39 +864,151 @@
     },
     {
       "inputs": [
-        "getitem_10"
+        "model_stage3_down_block_1",
+        "mul_5"
       ],
-      "name": "transpose_3",
-      "op": "call_method",
-      "target": "transpose"
-    },
-    {
-      "inputs": [
-        "mul_5",
-        "transpose_3"
-      ],
-      "name": "matmul_2",
-      "op": "call_function",
-      "target": "<built-in method matmul of type object at 0x00007FF9AC200E90>"
-    },
-    {
-      "inputs": [],
-      "name": "_rel_bias_1",
-      "op": "get_attr",
-      "target": "_rel_bias_1"
-    },
-    {
-      "inputs": [
-        "matmul_2",
-        "_rel_bias_1"
-      ],
-      "name": "add_8",
+      "name": "add_9",
       "op": "call_function",
       "target": "<built-in function add>"
     },
     {
       "inputs": [
-        "gt"
+        "add_9"
+      ],
+      "name": "model_stage3_1_depthwise",
+      "op": "call_module",
+      "target": "model.stage3.1.depthwise"
+    },
+    {
+      "inputs": [
+        "model_stage3_1_depthwise"
+      ],
+      "name": "permute_10",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "model_stage3_1_depthwise"
+      ],
+      "name": "getattr_6",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_6"
+      ],
+      "name": "getitem_5",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage3_1_norm_weight",
+      "op": "get_attr",
+      "target": "model.stage3.1.norm.weight"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage3_1_norm_bias",
+      "op": "get_attr",
+      "target": "model.stage3.1.norm.bias"
+    },
+    {
+      "inputs": [
+        "permute_10",
+        "getitem_5",
+        "model_stage3_1_norm_weight",
+        "model_stage3_1_norm_bias"
+      ],
+      "name": "layer_norm_5",
+      "op": "call_function",
+      "target": "<function layer_norm at 0x000001D174CBBE50>"
+    },
+    {
+      "inputs": [
+        "layer_norm_5"
+      ],
+      "name": "permute_11",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "permute_11"
+      ],
+      "name": "model_stage3_1_pointwise_0",
+      "op": "call_module",
+      "target": "model.stage3.1.pointwise.0"
+    },
+    {
+      "inputs": [
+        "model_stage3_1_pointwise_0"
+      ],
+      "name": "model_stage3_1_pointwise_1",
+      "op": "call_module",
+      "target": "model.stage3.1.pointwise.1"
+    },
+    {
+      "inputs": [
+        "model_stage3_1_pointwise_1"
+      ],
+      "name": "model_stage3_1_pointwise_2",
+      "op": "call_module",
+      "target": "model.stage3.1.pointwise.2"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage3_1_scale",
+      "op": "get_attr",
+      "target": "model.stage3.1.scale"
+    },
+    {
+      "inputs": [
+        "model_stage3_1_scale"
+      ],
+      "name": "view_3",
+      "op": "call_method",
+      "target": "view"
+    },
+    {
+      "inputs": [
+        "view_3",
+        "model_stage3_1_pointwise_2"
+      ],
+      "name": "mul_6",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "add_9",
+        "mul_6"
+      ],
+      "name": "add_10",
+      "op": "call_function",
+      "target": "<built-in function add>"
+    },
+    {
+      "inputs": [
+        "model_conditioner_proj_3"
+      ],
+      "name": "model_stage3_affine_scale",
+      "op": "call_module",
+      "target": "model.stage3_affine.scale"
+    },
+    {
+      "inputs": [
+        "model_stage3_affine_scale"
+      ],
+      "name": "tanh_3",
+      "op": "call_function",
+      "target": "<built-in method tanh of type object at 0x00007FF812C1EE90>"
+    },
+    {
+      "inputs": [
+        "tanh_3"
       ],
       "name": "unsqueeze_12",
       "op": "call_method",
@@ -891,60 +1024,15 @@
     },
     {
       "inputs": [
-        "unsqueeze_13"
+        "model_conditioner_proj_3"
       ],
-      "name": "invert_1",
-      "op": "call_function",
-      "target": "<built-in function invert>"
+      "name": "model_stage3_affine_bias",
+      "op": "call_module",
+      "target": "model.stage3_affine.bias"
     },
     {
       "inputs": [
-        "add_8",
-        "invert_1"
-      ],
-      "name": "masked_fill_1",
-      "op": "call_method",
-      "target": "masked_fill"
-    },
-    {
-      "inputs": [
-        "masked_fill_1"
-      ],
-      "name": "softmax_1",
-      "op": "call_function",
-      "target": "<built-in method softmax of type object at 0x00007FF9AC200E90>"
-    },
-    {
-      "inputs": [
-        "softmax_1",
-        "getitem_11"
-      ],
-      "name": "matmul_3",
-      "op": "call_function",
-      "target": "<built-in method matmul of type object at 0x00007FF9AC200E90>"
-    },
-    {
-      "inputs": [
-        "matmul_3"
-      ],
-      "name": "transpose_4",
-      "op": "call_method",
-      "target": "transpose"
-    },
-    {
-      "inputs": [
-        "transpose_4",
-        "getitem_6",
-        "getitem_7",
-        "getitem_8"
-      ],
-      "name": "reshape_3",
-      "op": "call_method",
-      "target": "reshape"
-    },
-    {
-      "inputs": [
-        "gt"
+        "model_stage3_affine_bias"
       ],
       "name": "unsqueeze_14",
       "op": "call_method",
@@ -952,91 +1040,7 @@
     },
     {
       "inputs": [
-        "reshape_3"
-      ],
-      "name": "getattr_5",
-      "op": "call_function",
-      "target": "<built-in function getattr>"
-    },
-    {
-      "inputs": [
-        "unsqueeze_14",
-        "getattr_5"
-      ],
-      "name": "to_2",
-      "op": "call_method",
-      "target": "to"
-    },
-    {
-      "inputs": [
-        "reshape_3",
-        "to_2"
-      ],
-      "name": "mul_6",
-      "op": "call_function",
-      "target": "<built-in function mul>"
-    },
-    {
-      "inputs": [
-        "mul_6"
-      ],
-      "name": "transformer_1_attn_out",
-      "op": "call_module",
-      "target": "transformer.1.attn.out"
-    },
-    {
-      "inputs": [
-        "mul_4",
-        "transformer_1_attn_out"
-      ],
-      "name": "add_9",
-      "op": "call_function",
-      "target": "<built-in function add>"
-    },
-    {
-      "inputs": [
-        "add_9"
-      ],
-      "name": "transformer_1_norm2",
-      "op": "call_module",
-      "target": "transformer.1.norm2"
-    },
-    {
-      "inputs": [
-        "transformer_1_norm2"
-      ],
-      "name": "transformer_1_mlp_0",
-      "op": "call_module",
-      "target": "transformer.1.mlp.0"
-    },
-    {
-      "inputs": [
-        "transformer_1_mlp_0"
-      ],
-      "name": "transformer_1_mlp_1",
-      "op": "call_module",
-      "target": "transformer.1.mlp.1"
-    },
-    {
-      "inputs": [
-        "transformer_1_mlp_1"
-      ],
-      "name": "transformer_1_mlp_2",
-      "op": "call_module",
-      "target": "transformer.1.mlp.2"
-    },
-    {
-      "inputs": [
-        "add_9",
-        "transformer_1_mlp_2"
-      ],
-      "name": "add_10",
-      "op": "call_function",
-      "target": "<built-in function add>"
-    },
-    {
-      "inputs": [
-        "gt"
+        "unsqueeze_14"
       ],
       "name": "unsqueeze_15",
       "op": "call_method",
@@ -1044,25 +1048,16 @@
     },
     {
       "inputs": [
-        "add_10"
+        "unsqueeze_13"
       ],
-      "name": "getattr_6",
+      "name": "add_11",
       "op": "call_function",
-      "target": "<built-in function getattr>"
-    },
-    {
-      "inputs": [
-        "unsqueeze_15",
-        "getattr_6"
-      ],
-      "name": "to_3",
-      "op": "call_method",
-      "target": "to"
+      "target": "<built-in function add>"
     },
     {
       "inputs": [
         "add_10",
-        "to_3"
+        "add_11"
       ],
       "name": "mul_7",
       "op": "call_function",
@@ -1070,25 +1065,181 @@
     },
     {
       "inputs": [
-        "mul_7"
+        "mul_7",
+        "unsqueeze_15"
       ],
-      "name": "transpose_5",
-      "op": "call_method",
-      "target": "transpose"
+      "name": "add_12",
+      "op": "call_function",
+      "target": "<built-in function add>"
     },
     {
       "inputs": [
-        "transpose_5",
-        "add_4"
+        "add_12"
       ],
-      "name": "reshape_as",
+      "name": "permute_12",
       "op": "call_method",
-      "target": "reshape_as"
+      "target": "permute"
     },
     {
       "inputs": [
-        "reshape_as",
-        "interpolate"
+        "add_12"
+      ],
+      "name": "getattr_7",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_7"
+      ],
+      "name": "getitem_6",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage4_down_block_0_weight",
+      "op": "get_attr",
+      "target": "model.stage4_down.block.0.weight"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage4_down_block_0_bias",
+      "op": "get_attr",
+      "target": "model.stage4_down.block.0.bias"
+    },
+    {
+      "inputs": [
+        "permute_12",
+        "getitem_6",
+        "model_stage4_down_block_0_weight",
+        "model_stage4_down_block_0_bias"
+      ],
+      "name": "layer_norm_6",
+      "op": "call_function",
+      "target": "<function layer_norm at 0x000001D174CBBE50>"
+    },
+    {
+      "inputs": [
+        "layer_norm_6"
+      ],
+      "name": "permute_13",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "permute_13"
+      ],
+      "name": "model_stage4_down_block_1",
+      "op": "call_module",
+      "target": "model.stage4_down.block.1"
+    },
+    {
+      "inputs": [
+        "model_stage4_down_block_1"
+      ],
+      "name": "model_stage4_0_depthwise",
+      "op": "call_module",
+      "target": "model.stage4.0.depthwise"
+    },
+    {
+      "inputs": [
+        "model_stage4_0_depthwise"
+      ],
+      "name": "permute_14",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "model_stage4_0_depthwise"
+      ],
+      "name": "getattr_8",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_8"
+      ],
+      "name": "getitem_7",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage4_0_norm_weight",
+      "op": "get_attr",
+      "target": "model.stage4.0.norm.weight"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage4_0_norm_bias",
+      "op": "get_attr",
+      "target": "model.stage4.0.norm.bias"
+    },
+    {
+      "inputs": [
+        "permute_14",
+        "getitem_7",
+        "model_stage4_0_norm_weight",
+        "model_stage4_0_norm_bias"
+      ],
+      "name": "layer_norm_7",
+      "op": "call_function",
+      "target": "<function layer_norm at 0x000001D174CBBE50>"
+    },
+    {
+      "inputs": [
+        "layer_norm_7"
+      ],
+      "name": "permute_15",
+      "op": "call_method",
+      "target": "permute"
+    },
+    {
+      "inputs": [
+        "permute_15"
+      ],
+      "name": "model_stage4_0_pointwise_0",
+      "op": "call_module",
+      "target": "model.stage4.0.pointwise.0"
+    },
+    {
+      "inputs": [
+        "model_stage4_0_pointwise_0"
+      ],
+      "name": "model_stage4_0_pointwise_1",
+      "op": "call_module",
+      "target": "model.stage4.0.pointwise.1"
+    },
+    {
+      "inputs": [
+        "model_stage4_0_pointwise_1"
+      ],
+      "name": "model_stage4_0_pointwise_2",
+      "op": "call_module",
+      "target": "model.stage4.0.pointwise.2"
+    },
+    {
+      "inputs": [],
+      "name": "model_stage4_0_scale",
+      "op": "get_attr",
+      "target": "model.stage4.0.scale"
+    },
+    {
+      "inputs": [
+        "model_stage4_0_scale"
+      ],
+      "name": "view_4",
+      "op": "call_method",
+      "target": "view"
+    },
+    {
+      "inputs": [
+        "view_4",
+        "model_stage4_0_pointwise_2"
       ],
       "name": "mul_8",
       "op": "call_function",
@@ -1096,7 +1247,169 @@
     },
     {
       "inputs": [
-        "interpolate"
+        "model_stage4_down_block_1",
+        "mul_8"
+      ],
+      "name": "add_13",
+      "op": "call_function",
+      "target": "<built-in function add>"
+    },
+    {
+      "inputs": [
+        "model_conditioner_proj_3"
+      ],
+      "name": "model_stage4_affine_scale",
+      "op": "call_module",
+      "target": "model.stage4_affine.scale"
+    },
+    {
+      "inputs": [
+        "model_stage4_affine_scale"
+      ],
+      "name": "tanh_4",
+      "op": "call_function",
+      "target": "<built-in method tanh of type object at 0x00007FF812C1EE90>"
+    },
+    {
+      "inputs": [
+        "tanh_4"
+      ],
+      "name": "unsqueeze_16",
+      "op": "call_method",
+      "target": "unsqueeze"
+    },
+    {
+      "inputs": [
+        "unsqueeze_16"
+      ],
+      "name": "unsqueeze_17",
+      "op": "call_method",
+      "target": "unsqueeze"
+    },
+    {
+      "inputs": [
+        "model_conditioner_proj_3"
+      ],
+      "name": "model_stage4_affine_bias",
+      "op": "call_module",
+      "target": "model.stage4_affine.bias"
+    },
+    {
+      "inputs": [
+        "model_stage4_affine_bias"
+      ],
+      "name": "unsqueeze_18",
+      "op": "call_method",
+      "target": "unsqueeze"
+    },
+    {
+      "inputs": [
+        "unsqueeze_18"
+      ],
+      "name": "unsqueeze_19",
+      "op": "call_method",
+      "target": "unsqueeze"
+    },
+    {
+      "inputs": [
+        "unsqueeze_17"
+      ],
+      "name": "add_14",
+      "op": "call_function",
+      "target": "<built-in function add>"
+    },
+    {
+      "inputs": [
+        "add_13",
+        "add_14"
+      ],
+      "name": "mul_9",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "mul_9",
+        "unsqueeze_19"
+      ],
+      "name": "add_15",
+      "op": "call_function",
+      "target": "<built-in function add>"
+    },
+    {
+      "inputs": [
+        "add_5"
+      ],
+      "name": "model_pyramid_laterals_0",
+      "op": "call_module",
+      "target": "model.pyramid_laterals.0"
+    },
+    {
+      "inputs": [
+        "add_8"
+      ],
+      "name": "model_pyramid_laterals_1",
+      "op": "call_module",
+      "target": "model.pyramid_laterals.1"
+    },
+    {
+      "inputs": [
+        "add_12"
+      ],
+      "name": "model_pyramid_laterals_2",
+      "op": "call_module",
+      "target": "model.pyramid_laterals.2"
+    },
+    {
+      "inputs": [
+        "add_15"
+      ],
+      "name": "model_pyramid_laterals_3",
+      "op": "call_module",
+      "target": "model.pyramid_laterals.3"
+    },
+    {
+      "inputs": [
+        "model_pyramid_laterals_2"
+      ],
+      "name": "getattr_9",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_9"
+      ],
+      "name": "getitem_8",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "model_pyramid_laterals_3",
+        "getitem_8"
+      ],
+      "name": "interpolate",
+      "op": "call_function",
+      "target": "<function interpolate at 0x000001D174D39790>"
+    },
+    {
+      "inputs": [],
+      "name": "model_bifpn_0_td3_weights",
+      "op": "get_attr",
+      "target": "model.bifpn.0.td3.weights"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_td3_weights"
+      ],
+      "name": "relu",
+      "op": "call_function",
+      "target": "<function relu at 0x000001D174CB9DC0>"
+    },
+    {
+      "inputs": [
+        "relu"
       ],
       "name": "sum_1",
       "op": "call_method",
@@ -1112,15 +1425,7 @@
     },
     {
       "inputs": [
-        "mul_8"
-      ],
-      "name": "sum_2",
-      "op": "call_method",
-      "target": "sum"
-    },
-    {
-      "inputs": [
-        "sum_2",
+        "relu",
         "clamp_min"
       ],
       "name": "truediv",
@@ -1129,109 +1434,25 @@
     },
     {
       "inputs": [
-        "image"
-      ],
-      "name": "getitem_12",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "valid_mask"
-      ],
-      "name": "getitem_13",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "getitem_12"
+        "model_pyramid_laterals_2",
+        "interpolate"
       ],
       "name": "stack",
       "op": "call_function",
-      "target": "<built-in method stack of type object at 0x00007FF9AC200E90>"
+      "target": "<built-in method stack of type object at 0x00007FF812C1EE90>"
     },
     {
       "inputs": [
-        "getitem_13"
+        "truediv"
       ],
-      "name": "stack_1",
-      "op": "call_function",
-      "target": "<built-in method stack of type object at 0x00007FF9AC200E90>"
-    },
-    {
-      "inputs": [
-        "stack"
-      ],
-      "name": "getattr_7",
-      "op": "call_function",
-      "target": "<built-in function getattr>"
-    },
-    {
-      "inputs": [
-        "getattr_7"
-      ],
-      "name": "getitem_14",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "getattr_7"
-      ],
-      "name": "getitem_15",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "getattr_7"
-      ],
-      "name": "getitem_16",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "getattr_7"
-      ],
-      "name": "getitem_17",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "getattr_7"
-      ],
-      "name": "getitem_18",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "getitem_14",
-        "getitem_15"
-      ],
-      "name": "mul_9",
-      "op": "call_function",
-      "target": "<built-in function mul>"
-    },
-    {
-      "inputs": [
-        "stack",
-        "mul_9",
-        "getitem_16",
-        "getitem_17",
-        "getitem_18"
-      ],
-      "name": "reshape_4",
+      "name": "view_5",
       "op": "call_method",
-      "target": "reshape"
+      "target": "view"
     },
     {
       "inputs": [
-        "getitem_14",
-        "getitem_15"
+        "view_5",
+        "stack"
       ],
       "name": "mul_10",
       "op": "call_function",
@@ -1239,148 +1460,86 @@
     },
     {
       "inputs": [
-        "stack_1",
-        "mul_10",
-        "getitem_17",
-        "getitem_18"
+        "mul_10"
       ],
-      "name": "reshape_5",
+      "name": "sum_2",
       "op": "call_method",
-      "target": "reshape"
+      "target": "sum"
     },
     {
       "inputs": [
-        "reshape_4"
+        "sum_2"
       ],
-      "name": "local_encoder_net_0_block_0",
+      "name": "model_bifpn_0_td3_refine_0",
       "op": "call_module",
-      "target": "local_encoder.net.0.block.0"
+      "target": "model.bifpn.0.td3.refine.0"
     },
     {
       "inputs": [
-        "local_encoder_net_0_block_0"
+        "model_bifpn_0_td3_refine_0"
       ],
-      "name": "local_encoder_net_0_block_1",
+      "name": "model_bifpn_0_td3_refine_1",
       "op": "call_module",
-      "target": "local_encoder.net.0.block.1"
+      "target": "model.bifpn.0.td3.refine.1"
     },
     {
       "inputs": [
-        "local_encoder_net_0_block_1"
+        "model_bifpn_0_td3_refine_1"
       ],
-      "name": "local_encoder_net_0_block_2",
+      "name": "model_bifpn_0_td3_refine_2",
       "op": "call_module",
-      "target": "local_encoder.net.0.block.2"
+      "target": "model.bifpn.0.td3.refine.2"
     },
     {
       "inputs": [
-        "local_encoder_net_0_block_2"
+        "model_bifpn_0_td3_refine_2"
       ],
-      "name": "local_encoder_net_1_block_0",
+      "name": "model_bifpn_0_td3_refine_3",
       "op": "call_module",
-      "target": "local_encoder.net.1.block.0"
+      "target": "model.bifpn.0.td3.refine.3"
     },
     {
       "inputs": [
-        "local_encoder_net_1_block_0"
+        "model_pyramid_laterals_1"
       ],
-      "name": "local_encoder_net_1_block_1",
-      "op": "call_module",
-      "target": "local_encoder.net.1.block.1"
-    },
-    {
-      "inputs": [
-        "local_encoder_net_1_block_1"
-      ],
-      "name": "local_encoder_net_1_block_2",
-      "op": "call_module",
-      "target": "local_encoder.net.1.block.2"
-    },
-    {
-      "inputs": [
-        "local_encoder_net_1_block_2"
-      ],
-      "name": "local_encoder_net_2_block_0",
-      "op": "call_module",
-      "target": "local_encoder.net.2.block.0"
-    },
-    {
-      "inputs": [
-        "local_encoder_net_2_block_0"
-      ],
-      "name": "local_encoder_net_2_block_1",
-      "op": "call_module",
-      "target": "local_encoder.net.2.block.1"
-    },
-    {
-      "inputs": [
-        "local_encoder_net_2_block_1"
-      ],
-      "name": "local_encoder_net_2_block_2",
-      "op": "call_module",
-      "target": "local_encoder.net.2.block.2"
-    },
-    {
-      "inputs": [
-        "local_encoder_net_2_block_2"
-      ],
-      "name": "local_encoder_net_3_block_0",
-      "op": "call_module",
-      "target": "local_encoder.net.3.block.0"
-    },
-    {
-      "inputs": [
-        "local_encoder_net_3_block_0"
-      ],
-      "name": "local_encoder_net_3_block_1",
-      "op": "call_module",
-      "target": "local_encoder.net.3.block.1"
-    },
-    {
-      "inputs": [
-        "local_encoder_net_3_block_1"
-      ],
-      "name": "local_encoder_net_3_block_2",
-      "op": "call_module",
-      "target": "local_encoder.net.3.block.2"
-    },
-    {
-      "inputs": [
-        "local_encoder_net_3_block_2"
-      ],
-      "name": "getattr_8",
+      "name": "getattr_10",
       "op": "call_function",
       "target": "<built-in function getattr>"
     },
     {
       "inputs": [
-        "getattr_8"
+        "getattr_10"
       ],
-      "name": "getitem_19",
+      "name": "getitem_9",
       "op": "call_function",
       "target": "<built-in function getitem>"
     },
     {
       "inputs": [
-        "reshape_5",
-        "getitem_19"
+        "model_bifpn_0_td3_refine_3",
+        "getitem_9"
       ],
       "name": "interpolate_1",
       "op": "call_function",
-      "target": "<function interpolate at 0x00000234EBEA25E0>"
+      "target": "<function interpolate at 0x000001D174D39790>"
+    },
+    {
+      "inputs": [],
+      "name": "model_bifpn_0_td2_weights",
+      "op": "get_attr",
+      "target": "model.bifpn.0.td2.weights"
     },
     {
       "inputs": [
-        "local_encoder_net_3_block_2",
-        "interpolate_1"
+        "model_bifpn_0_td2_weights"
       ],
-      "name": "mul_11",
+      "name": "relu_1",
       "op": "call_function",
-      "target": "<built-in function mul>"
+      "target": "<function relu at 0x000001D174CB9DC0>"
     },
     {
       "inputs": [
-        "interpolate_1"
+        "relu_1"
       ],
       "name": "sum_3",
       "op": "call_method",
@@ -1396,15 +1555,7 @@
     },
     {
       "inputs": [
-        "mul_11"
-      ],
-      "name": "sum_4",
-      "op": "call_method",
-      "target": "sum"
-    },
-    {
-      "inputs": [
-        "sum_4",
+        "relu_1",
         "clamp_min_1"
       ],
       "name": "truediv_1",
@@ -1413,74 +1564,155 @@
     },
     {
       "inputs": [
+        "model_pyramid_laterals_1",
+        "interpolate_1"
+      ],
+      "name": "stack_1",
+      "op": "call_function",
+      "target": "<built-in method stack of type object at 0x00007FF812C1EE90>"
+    },
+    {
+      "inputs": [
         "truediv_1"
       ],
-      "name": "local_encoder_project",
-      "op": "call_module",
-      "target": "local_encoder.project"
-    },
-    {
-      "inputs": [
-        "local_encoder_project",
-        "getitem_14",
-        "getitem_15"
-      ],
-      "name": "reshape_6",
+      "name": "view_6",
       "op": "call_method",
-      "target": "reshape"
+      "target": "view"
     },
     {
       "inputs": [
-        "conditioner_proj_3"
+        "view_6",
+        "stack_1"
       ],
-      "name": "local_affine_scale",
-      "op": "call_module",
-      "target": "local_affine.scale"
-    },
-    {
-      "inputs": [
-        "local_affine_scale"
-      ],
-      "name": "tanh_2",
+      "name": "mul_11",
       "op": "call_function",
-      "target": "<built-in method tanh of type object at 0x00007FF9AC200E90>"
+      "target": "<built-in function mul>"
     },
     {
       "inputs": [
-        "tanh_2"
+        "mul_11"
       ],
-      "name": "unsqueeze_16",
+      "name": "sum_4",
       "op": "call_method",
-      "target": "unsqueeze"
+      "target": "sum"
     },
     {
       "inputs": [
-        "conditioner_proj_3"
+        "sum_4"
       ],
-      "name": "local_affine_bias",
+      "name": "model_bifpn_0_td2_refine_0",
       "op": "call_module",
-      "target": "local_affine.bias"
+      "target": "model.bifpn.0.td2.refine.0"
     },
     {
       "inputs": [
-        "local_affine_bias"
+        "model_bifpn_0_td2_refine_0"
       ],
-      "name": "unsqueeze_17",
-      "op": "call_method",
-      "target": "unsqueeze"
+      "name": "model_bifpn_0_td2_refine_1",
+      "op": "call_module",
+      "target": "model.bifpn.0.td2.refine.1"
     },
     {
       "inputs": [
-        "unsqueeze_16"
+        "model_bifpn_0_td2_refine_1"
       ],
-      "name": "add_11",
+      "name": "model_bifpn_0_td2_refine_2",
+      "op": "call_module",
+      "target": "model.bifpn.0.td2.refine.2"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_td2_refine_2"
+      ],
+      "name": "model_bifpn_0_td2_refine_3",
+      "op": "call_module",
+      "target": "model.bifpn.0.td2.refine.3"
+    },
+    {
+      "inputs": [
+        "model_pyramid_laterals_0"
+      ],
+      "name": "getattr_11",
       "op": "call_function",
-      "target": "<built-in function add>"
+      "target": "<built-in function getattr>"
     },
     {
       "inputs": [
-        "reshape_6",
-        "add_11"
+        "getattr_11"
+      ],
+      "name": "getitem_10",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_td2_refine_3",
+        "getitem_10"
+      ],
+      "name": "interpolate_2",
+      "op": "call_function",
+      "target": "<function interpolate at 0x000001D174D39790>"
+    },
+    {
+      "inputs": [],
+      "name": "model_bifpn_0_td1_weights",
+      "op": "get_attr",
+      "target": "model.bifpn.0.td1.weights"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_td1_weights"
+      ],
+      "name": "relu_2",
+      "op": "call_function",
+      "target": "<function relu at 0x000001D174CB9DC0>"
+    },
+    {
+      "inputs": [
+        "relu_2"
+      ],
+      "name": "sum_5",
+      "op": "call_method",
+      "target": "sum"
+    },
+    {
+      "inputs": [
+        "sum_5"
+      ],
+      "name": "clamp_min_2",
+      "op": "call_method",
+      "target": "clamp_min"
+    },
+    {
+      "inputs": [
+        "relu_2",
+        "clamp_min_2"
+      ],
+      "name": "truediv_2",
+      "op": "call_function",
+      "target": "<built-in function truediv>"
+    },
+    {
+      "inputs": [
+        "model_pyramid_laterals_0",
+        "interpolate_2"
+      ],
+      "name": "stack_2",
+      "op": "call_function",
+      "target": "<built-in method stack of type object at 0x00007FF812C1EE90>"
+    },
+    {
+      "inputs": [
+        "truediv_2"
+      ],
+      "name": "view_7",
+      "op": "call_method",
+      "target": "view"
+    },
+    {
+      "inputs": [
+        "view_7",
+        "stack_2"
       ],
       "name": "mul_12",
       "op": "call_function",
@@ -1488,98 +1720,130 @@
     },
     {
       "inputs": [
-        "mul_12",
-        "unsqueeze_17"
+        "mul_12"
       ],
-      "name": "add_12",
-      "op": "call_function",
-      "target": "<built-in function add>"
+      "name": "sum_6",
+      "op": "call_method",
+      "target": "sum"
     },
     {
       "inputs": [
-        "add_12"
+        "sum_6"
       ],
-      "name": "tile_classifier",
+      "name": "model_bifpn_0_td1_refine_0",
       "op": "call_module",
-      "target": "tile_classifier"
+      "target": "model.bifpn.0.td1.refine.0"
     },
     {
       "inputs": [
-        "tile_classifier"
+        "model_bifpn_0_td1_refine_0"
       ],
-      "name": "squeeze_1",
-      "op": "call_method",
-      "target": "squeeze"
-    },
-    {
-      "inputs": [
-        "stack_1"
-      ],
-      "name": "mean",
-      "op": "call_method",
-      "target": "mean"
-    },
-    {
-      "inputs": [
-        "mean"
-      ],
-      "name": "ge",
-      "op": "call_function",
-      "target": "<built-in function ge>"
-    },
-    {
-      "inputs": [
-        "add_12"
-      ],
-      "name": "tile_pool_attention",
+      "name": "model_bifpn_0_td1_refine_1",
       "op": "call_module",
-      "target": "tile_pool.attention"
+      "target": "model.bifpn.0.td1.refine.1"
     },
     {
       "inputs": [
-        "tile_pool_attention"
+        "model_bifpn_0_td1_refine_1"
       ],
-      "name": "squeeze_2",
-      "op": "call_method",
-      "target": "squeeze"
+      "name": "model_bifpn_0_td1_refine_2",
+      "op": "call_module",
+      "target": "model.bifpn.0.td1.refine.2"
     },
     {
       "inputs": [
-        "ge"
+        "model_bifpn_0_td1_refine_2"
       ],
-      "name": "invert_2",
+      "name": "model_bifpn_0_td1_refine_3",
+      "op": "call_module",
+      "target": "model.bifpn.0.td1.refine.3"
+    },
+    {
+      "inputs": [
+        "model_pyramid_laterals_1"
+      ],
+      "name": "getattr_12",
       "op": "call_function",
-      "target": "<built-in function invert>"
+      "target": "<built-in function getattr>"
     },
     {
       "inputs": [
-        "squeeze_2",
-        "invert_2"
+        "getattr_12"
       ],
-      "name": "masked_fill_2",
-      "op": "call_method",
-      "target": "masked_fill"
-    },
-    {
-      "inputs": [
-        "masked_fill_2"
-      ],
-      "name": "softmax_2",
+      "name": "getitem_11",
       "op": "call_function",
-      "target": "<built-in method softmax of type object at 0x00007FF9AC200E90>"
+      "target": "<built-in function getitem>"
     },
     {
       "inputs": [
-        "softmax_2"
+        "model_bifpn_0_td1_refine_3",
+        "getitem_11"
       ],
-      "name": "unsqueeze_18",
-      "op": "call_method",
-      "target": "unsqueeze"
+      "name": "adaptive_max_pool2d",
+      "op": "call_function",
+      "target": "<function boolean_dispatch.<locals>.fn at 0x000001D174CB9670>"
+    },
+    {
+      "inputs": [],
+      "name": "model_bifpn_0_out2_weights",
+      "op": "get_attr",
+      "target": "model.bifpn.0.out2.weights"
     },
     {
       "inputs": [
-        "add_12",
-        "unsqueeze_18"
+        "model_bifpn_0_out2_weights"
+      ],
+      "name": "relu_3",
+      "op": "call_function",
+      "target": "<function relu at 0x000001D174CB9DC0>"
+    },
+    {
+      "inputs": [
+        "relu_3"
+      ],
+      "name": "sum_7",
+      "op": "call_method",
+      "target": "sum"
+    },
+    {
+      "inputs": [
+        "sum_7"
+      ],
+      "name": "clamp_min_3",
+      "op": "call_method",
+      "target": "clamp_min"
+    },
+    {
+      "inputs": [
+        "relu_3",
+        "clamp_min_3"
+      ],
+      "name": "truediv_3",
+      "op": "call_function",
+      "target": "<built-in function truediv>"
+    },
+    {
+      "inputs": [
+        "model_pyramid_laterals_1",
+        "model_bifpn_0_td2_refine_3",
+        "adaptive_max_pool2d"
+      ],
+      "name": "stack_3",
+      "op": "call_function",
+      "target": "<built-in method stack of type object at 0x00007FF812C1EE90>"
+    },
+    {
+      "inputs": [
+        "truediv_3"
+      ],
+      "name": "view_8",
+      "op": "call_method",
+      "target": "view"
+    },
+    {
+      "inputs": [
+        "view_8",
+        "stack_3"
       ],
       "name": "mul_13",
       "op": "call_function",
@@ -1589,82 +1853,1078 @@
       "inputs": [
         "mul_13"
       ],
-      "name": "sum_5",
+      "name": "sum_8",
       "op": "call_method",
       "target": "sum"
     },
     {
       "inputs": [
-        "truediv"
+        "sum_8"
       ],
-      "name": "global_project",
+      "name": "model_bifpn_0_out2_refine_0",
       "op": "call_module",
-      "target": "global_project"
+      "target": "model.bifpn.0.out2.refine.0"
     },
     {
       "inputs": [
-        "sum_5"
+        "model_bifpn_0_out2_refine_0"
       ],
-      "name": "local_project",
+      "name": "model_bifpn_0_out2_refine_1",
       "op": "call_module",
-      "target": "local_project"
+      "target": "model.bifpn.0.out2.refine.1"
     },
     {
       "inputs": [
-        "conditioner_proj_3"
+        "model_bifpn_0_out2_refine_1"
       ],
-      "name": "condition_project",
+      "name": "model_bifpn_0_out2_refine_2",
       "op": "call_module",
-      "target": "condition_project"
+      "target": "model.bifpn.0.out2.refine.2"
     },
     {
       "inputs": [
-        "global_project",
-        "local_project",
-        "condition_project"
+        "model_bifpn_0_out2_refine_2"
+      ],
+      "name": "model_bifpn_0_out2_refine_3",
+      "op": "call_module",
+      "target": "model.bifpn.0.out2.refine.3"
+    },
+    {
+      "inputs": [
+        "model_pyramid_laterals_2"
+      ],
+      "name": "getattr_13",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_13"
+      ],
+      "name": "getitem_12",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out2_refine_3",
+        "getitem_12"
+      ],
+      "name": "adaptive_max_pool2d_1",
+      "op": "call_function",
+      "target": "<function boolean_dispatch.<locals>.fn at 0x000001D174CB9670>"
+    },
+    {
+      "inputs": [],
+      "name": "model_bifpn_0_out3_weights",
+      "op": "get_attr",
+      "target": "model.bifpn.0.out3.weights"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out3_weights"
+      ],
+      "name": "relu_4",
+      "op": "call_function",
+      "target": "<function relu at 0x000001D174CB9DC0>"
+    },
+    {
+      "inputs": [
+        "relu_4"
+      ],
+      "name": "sum_9",
+      "op": "call_method",
+      "target": "sum"
+    },
+    {
+      "inputs": [
+        "sum_9"
+      ],
+      "name": "clamp_min_4",
+      "op": "call_method",
+      "target": "clamp_min"
+    },
+    {
+      "inputs": [
+        "relu_4",
+        "clamp_min_4"
+      ],
+      "name": "truediv_4",
+      "op": "call_function",
+      "target": "<built-in function truediv>"
+    },
+    {
+      "inputs": [
+        "model_pyramid_laterals_2",
+        "model_bifpn_0_td3_refine_3",
+        "adaptive_max_pool2d_1"
+      ],
+      "name": "stack_4",
+      "op": "call_function",
+      "target": "<built-in method stack of type object at 0x00007FF812C1EE90>"
+    },
+    {
+      "inputs": [
+        "truediv_4"
+      ],
+      "name": "view_9",
+      "op": "call_method",
+      "target": "view"
+    },
+    {
+      "inputs": [
+        "view_9",
+        "stack_4"
+      ],
+      "name": "mul_14",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "mul_14"
+      ],
+      "name": "sum_10",
+      "op": "call_method",
+      "target": "sum"
+    },
+    {
+      "inputs": [
+        "sum_10"
+      ],
+      "name": "model_bifpn_0_out3_refine_0",
+      "op": "call_module",
+      "target": "model.bifpn.0.out3.refine.0"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out3_refine_0"
+      ],
+      "name": "model_bifpn_0_out3_refine_1",
+      "op": "call_module",
+      "target": "model.bifpn.0.out3.refine.1"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out3_refine_1"
+      ],
+      "name": "model_bifpn_0_out3_refine_2",
+      "op": "call_module",
+      "target": "model.bifpn.0.out3.refine.2"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out3_refine_2"
+      ],
+      "name": "model_bifpn_0_out3_refine_3",
+      "op": "call_module",
+      "target": "model.bifpn.0.out3.refine.3"
+    },
+    {
+      "inputs": [
+        "model_pyramid_laterals_3"
+      ],
+      "name": "getattr_14",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_14"
+      ],
+      "name": "getitem_13",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out3_refine_3",
+        "getitem_13"
+      ],
+      "name": "adaptive_max_pool2d_2",
+      "op": "call_function",
+      "target": "<function boolean_dispatch.<locals>.fn at 0x000001D174CB9670>"
+    },
+    {
+      "inputs": [],
+      "name": "model_bifpn_0_out4_weights",
+      "op": "get_attr",
+      "target": "model.bifpn.0.out4.weights"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out4_weights"
+      ],
+      "name": "relu_5",
+      "op": "call_function",
+      "target": "<function relu at 0x000001D174CB9DC0>"
+    },
+    {
+      "inputs": [
+        "relu_5"
+      ],
+      "name": "sum_11",
+      "op": "call_method",
+      "target": "sum"
+    },
+    {
+      "inputs": [
+        "sum_11"
+      ],
+      "name": "clamp_min_5",
+      "op": "call_method",
+      "target": "clamp_min"
+    },
+    {
+      "inputs": [
+        "relu_5",
+        "clamp_min_5"
+      ],
+      "name": "truediv_5",
+      "op": "call_function",
+      "target": "<built-in function truediv>"
+    },
+    {
+      "inputs": [
+        "model_pyramid_laterals_3",
+        "adaptive_max_pool2d_2"
+      ],
+      "name": "stack_5",
+      "op": "call_function",
+      "target": "<built-in method stack of type object at 0x00007FF812C1EE90>"
+    },
+    {
+      "inputs": [
+        "truediv_5"
+      ],
+      "name": "view_10",
+      "op": "call_method",
+      "target": "view"
+    },
+    {
+      "inputs": [
+        "view_10",
+        "stack_5"
+      ],
+      "name": "mul_15",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "mul_15"
+      ],
+      "name": "sum_12",
+      "op": "call_method",
+      "target": "sum"
+    },
+    {
+      "inputs": [
+        "sum_12"
+      ],
+      "name": "model_bifpn_0_out4_refine_0",
+      "op": "call_module",
+      "target": "model.bifpn.0.out4.refine.0"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out4_refine_0"
+      ],
+      "name": "model_bifpn_0_out4_refine_1",
+      "op": "call_module",
+      "target": "model.bifpn.0.out4.refine.1"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out4_refine_1"
+      ],
+      "name": "model_bifpn_0_out4_refine_2",
+      "op": "call_module",
+      "target": "model.bifpn.0.out4.refine.2"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out4_refine_2"
+      ],
+      "name": "model_bifpn_0_out4_refine_3",
+      "op": "call_module",
+      "target": "model.bifpn.0.out4.refine.3"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out4_refine_3"
+      ],
+      "name": "getattr_15",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_15"
+      ],
+      "name": "getitem_14",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask",
+        "getitem_14"
+      ],
+      "name": "interpolate_3",
+      "op": "call_function",
+      "target": "<function interpolate at 0x000001D174D39790>"
+    },
+    {
+      "inputs": [
+        "model_bifpn_0_out4_refine_3"
+      ],
+      "name": "adaptive_avg_pool2d",
+      "op": "call_function",
+      "target": "<function adaptive_avg_pool2d at 0x000001D174CB98B0>"
+    },
+    {
+      "inputs": [
+        "interpolate_3"
+      ],
+      "name": "adaptive_max_pool2d_3",
+      "op": "call_function",
+      "target": "<function boolean_dispatch.<locals>.fn at 0x000001D174CB9670>"
+    },
+    {
+      "inputs": [
+        "adaptive_avg_pool2d"
+      ],
+      "name": "model_global_context_project",
+      "op": "call_module",
+      "target": "model.global_context_project"
+    },
+    {
+      "inputs": [
+        "model_global_context_project",
+        "adaptive_max_pool2d_3"
+      ],
+      "name": "mul_16",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "mul_16",
+        "adaptive_max_pool2d_3"
+      ],
+      "name": "mul_17",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "adaptive_max_pool2d_3"
+      ],
+      "name": "sum_13",
+      "op": "call_method",
+      "target": "sum"
+    },
+    {
+      "inputs": [
+        "sum_13"
+      ],
+      "name": "clamp_min_6",
+      "op": "call_method",
+      "target": "clamp_min"
+    },
+    {
+      "inputs": [
+        "mul_17"
+      ],
+      "name": "sum_14",
+      "op": "call_method",
+      "target": "sum"
+    },
+    {
+      "inputs": [
+        "sum_14",
+        "clamp_min_6"
+      ],
+      "name": "truediv_6",
+      "op": "call_function",
+      "target": "<built-in function truediv>"
+    },
+    {
+      "inputs": [
+        "truediv_6"
+      ],
+      "name": "model_global_project",
+      "op": "call_module",
+      "target": "model.global_project"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_15",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_16",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_17",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_18",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_19",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_20",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_21",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_22",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_23",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_24",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_25",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_26",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_27",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_28",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_29",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_30",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_31",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_32",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_33",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_34",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_35",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_36",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_37",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_38",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_39",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_40",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_41",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_42",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_43",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_44",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_45",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_46",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_47",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_48",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_49",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_50",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_51",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_52",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_53",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_54",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_55",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_56",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_57",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_58",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_59",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_60",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_61",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_62",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "image"
+      ],
+      "name": "getitem_63",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "valid_mask"
+      ],
+      "name": "getitem_64",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "getitem_15",
+        "getitem_17",
+        "getitem_19",
+        "getitem_21",
+        "getitem_23",
+        "getitem_25",
+        "getitem_27",
+        "getitem_29",
+        "getitem_31",
+        "getitem_33",
+        "getitem_35",
+        "getitem_37",
+        "getitem_39",
+        "getitem_41",
+        "getitem_43",
+        "getitem_45",
+        "getitem_47",
+        "getitem_49",
+        "getitem_51",
+        "getitem_53",
+        "getitem_55",
+        "getitem_57",
+        "getitem_59",
+        "getitem_61",
+        "getitem_63"
+      ],
+      "name": "stack_6",
+      "op": "call_function",
+      "target": "<built-in method stack of type object at 0x00007FF812C1EE90>"
+    },
+    {
+      "inputs": [
+        "getitem_16",
+        "getitem_18",
+        "getitem_20",
+        "getitem_22",
+        "getitem_24",
+        "getitem_26",
+        "getitem_28",
+        "getitem_30",
+        "getitem_32",
+        "getitem_34",
+        "getitem_36",
+        "getitem_38",
+        "getitem_40",
+        "getitem_42",
+        "getitem_44",
+        "getitem_46",
+        "getitem_48",
+        "getitem_50",
+        "getitem_52",
+        "getitem_54",
+        "getitem_56",
+        "getitem_58",
+        "getitem_60",
+        "getitem_62",
+        "getitem_64"
+      ],
+      "name": "stack_7",
+      "op": "call_function",
+      "target": "<built-in method stack of type object at 0x00007FF812C1EE90>"
+    },
+    {
+      "inputs": [
+        "stack_6",
+        "stack_7"
+      ],
+      "name": "mul_18",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "mul_18"
+      ],
+      "name": "mean",
+      "op": "call_method",
+      "target": "mean"
+    },
+    {
+      "inputs": [
+        "mean"
+      ],
+      "name": "getattr_16",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_16"
+      ],
+      "name": "getitem_65",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "mean"
+      ],
+      "name": "getattr_17",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_17"
+      ],
+      "name": "getitem_66",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "mean",
+        "getitem_65",
+        "getitem_66"
+      ],
+      "name": "view_11",
+      "op": "call_method",
+      "target": "view"
+    },
+    {
+      "inputs": [],
+      "name": "_tensor_constant0",
+      "op": "get_attr",
+      "target": "_tensor_constant0"
+    },
+    {
+      "inputs": [
+        "view_11",
+        "_tensor_constant0"
+      ],
+      "name": "mul_19",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "mul_19"
+      ],
+      "name": "sum_15",
+      "op": "call_method",
+      "target": "sum"
+    },
+    {
+      "inputs": [],
+      "name": "tile_mask_counts",
+      "op": "get_attr",
+      "target": "tile_mask_counts"
+    },
+    {
+      "inputs": [
+        "sum_15",
+        "tile_mask_counts"
+      ],
+      "name": "truediv_7",
+      "op": "call_function",
+      "target": "<built-in function truediv>"
+    },
+    {
+      "inputs": [
+        "truediv_7",
+        "valid_mask"
+      ],
+      "name": "mul_20",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "mul_20"
+      ],
+      "name": "mean_1",
+      "op": "call_method",
+      "target": "mean"
+    },
+    {
+      "inputs": [
+        "mean_1"
+      ],
+      "name": "unsqueeze_20",
+      "op": "call_method",
+      "target": "unsqueeze"
+    },
+    {
+      "inputs": [
+        "model_global_project"
+      ],
+      "name": "getattr_18",
+      "op": "call_function",
+      "target": "<built-in function getattr>"
+    },
+    {
+      "inputs": [
+        "getattr_18"
+      ],
+      "name": "getitem_67",
+      "op": "call_function",
+      "target": "<built-in function getitem>"
+    },
+    {
+      "inputs": [
+        "unsqueeze_20",
+        "getitem_67"
+      ],
+      "name": "expand",
+      "op": "call_method",
+      "target": "expand"
+    },
+    {
+      "inputs": [
+        "model_conditioner_proj_3"
+      ],
+      "name": "model_condition_project",
+      "op": "call_module",
+      "target": "model.condition_project"
+    },
+    {
+      "inputs": [
+        "model_global_project",
+        "expand",
+        "model_condition_project"
       ],
       "name": "cat",
       "op": "call_function",
-      "target": "<built-in method cat of type object at 0x00007FF9AC200E90>"
+      "target": "<built-in method cat of type object at 0x00007FF812C1EE90>"
     },
     {
       "inputs": [
         "cat"
       ],
-      "name": "fusion_gate_0",
+      "name": "model_fusion_gate_0",
       "op": "call_module",
-      "target": "fusion_gate.0"
+      "target": "model.fusion_gate.0"
     },
     {
       "inputs": [
-        "fusion_gate_0"
+        "model_fusion_gate_0"
       ],
-      "name": "fusion_gate_1",
+      "name": "model_fusion_gate_1",
       "op": "call_module",
-      "target": "fusion_gate.1"
+      "target": "model.fusion_gate.1"
     },
     {
       "inputs": [
-        "fusion_gate_1"
+        "model_fusion_gate_1"
       ],
-      "name": "fusion_gate_2",
+      "name": "model_fusion_gate_2",
       "op": "call_module",
-      "target": "fusion_gate.2"
+      "target": "model.fusion_gate.2"
     },
     {
       "inputs": [
-        "fusion_gate_2"
+        "model_fusion_gate_2"
       ],
       "name": "sigmoid",
       "op": "call_function",
-      "target": "<built-in method sigmoid of type object at 0x00007FF9AC200E90>"
+      "target": "<built-in method sigmoid of type object at 0x00007FF812C1EE90>"
     },
     {
       "inputs": [
         "sigmoid",
-        "global_project"
+        "model_global_project"
       ],
-      "name": "mul_14",
+      "name": "mul_21",
       "op": "call_function",
       "target": "<built-in function mul>"
     },
@@ -1679,214 +2939,141 @@
     {
       "inputs": [
         "sub",
-        "local_project"
+        "expand"
       ],
-      "name": "mul_15",
+      "name": "mul_22",
       "op": "call_function",
       "target": "<built-in function mul>"
     },
     {
       "inputs": [
-        "mul_14",
-        "mul_15"
+        "mul_21",
+        "mul_22"
       ],
-      "name": "add_13",
+      "name": "add_16",
       "op": "call_function",
       "target": "<built-in function add>"
     },
     {
       "inputs": [
-        "condition_project"
+        "model_condition_project"
       ],
-      "name": "mul_16",
+      "name": "mul_23",
       "op": "call_function",
       "target": "<built-in function mul>"
     },
     {
       "inputs": [
-        "add_13",
-        "mul_16"
+        "add_16",
+        "mul_23"
       ],
-      "name": "add_14",
+      "name": "add_17",
       "op": "call_function",
       "target": "<built-in function add>"
     },
     {
       "inputs": [
-        "add_14"
+        "add_17"
       ],
-      "name": "reject_head",
+      "name": "model_reject_head",
       "op": "call_module",
-      "target": "reject_head"
+      "target": "model.reject_head"
     },
     {
       "inputs": [
-        "reject_head"
+        "model_reject_head"
       ],
-      "name": "squeeze_3",
+      "name": "squeeze",
       "op": "call_method",
       "target": "squeeze"
     },
     {
       "inputs": [
-        "add_14"
+        "add_17"
       ],
-      "name": "defect_head",
+      "name": "model_defect_head",
       "op": "call_module",
-      "target": "defect_head"
+      "target": "model.defect_head"
     },
     {
       "inputs": [
-        "reshape_as"
+        "model_bifpn_0_td1_refine_3"
       ],
-      "name": "global_heatmap_head",
+      "name": "model_global_heatmap_head_0",
       "op": "call_module",
-      "target": "global_heatmap_head"
+      "target": "model.global_heatmap_head.0"
     },
     {
       "inputs": [
-        "global_heatmap_head"
+        "model_global_heatmap_head_0"
       ],
-      "name": "interpolate_2",
+      "name": "model_global_heatmap_head_1",
+      "op": "call_module",
+      "target": "model.global_heatmap_head.1"
+    },
+    {
+      "inputs": [
+        "model_global_heatmap_head_1"
+      ],
+      "name": "model_global_heatmap_head_2",
+      "op": "call_module",
+      "target": "model.global_heatmap_head.2"
+    },
+    {
+      "inputs": [
+        "model_global_heatmap_head_2"
+      ],
+      "name": "interpolate_4",
       "op": "call_function",
-      "target": "<function interpolate at 0x00000234EBEA25E0>"
+      "target": "<function interpolate at 0x000001D174D39790>"
     },
     {
       "inputs": [
-        "squeeze_1"
+        "interpolate_4"
       ],
-      "name": "getattr_9",
-      "op": "call_function",
-      "target": "<built-in function getattr>"
-    },
-    {
-      "inputs": [
-        "getattr_9"
-      ],
-      "name": "getitem_20",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "squeeze_1"
-      ],
-      "name": "getattr_10",
-      "op": "call_function",
-      "target": "<built-in function getattr>"
-    },
-    {
-      "inputs": [
-        "getattr_10"
-      ],
-      "name": "getitem_21",
-      "op": "call_function",
-      "target": "<built-in function getitem>"
-    },
-    {
-      "inputs": [
-        "squeeze_1",
-        "getitem_20",
-        "getitem_21"
-      ],
-      "name": "view",
-      "op": "call_method",
-      "target": "view"
-    },
-    {
-      "inputs": [],
-      "name": "_tensor_constant0",
-      "op": "get_attr",
-      "target": "_tensor_constant0"
-    },
-    {
-      "inputs": [
-        "view",
-        "_tensor_constant0"
-      ],
-      "name": "mul_17",
+      "name": "mul_24",
       "op": "call_function",
       "target": "<built-in function mul>"
     },
     {
       "inputs": [
-        "mul_17"
-      ],
-      "name": "sum_6",
-      "op": "call_method",
-      "target": "sum"
-    },
-    {
-      "inputs": [],
-      "name": "tile_mask_counts",
-      "op": "get_attr",
-      "target": "tile_mask_counts"
-    },
-    {
-      "inputs": [
-        "sum_6",
-        "tile_mask_counts"
-      ],
-      "name": "truediv_2",
-      "op": "call_function",
-      "target": "<built-in function truediv>"
-    },
-    {
-      "inputs": [
-        "truediv_2",
-        "valid_mask"
-      ],
-      "name": "mul_18",
-      "op": "call_function",
-      "target": "<built-in function mul>"
-    },
-    {
-      "inputs": [
-        "interpolate_2"
-      ],
-      "name": "mul_19",
-      "op": "call_function",
-      "target": "<built-in function mul>"
-    },
-    {
-      "inputs": [
-        "mul_18"
-      ],
-      "name": "mul_20",
-      "op": "call_function",
-      "target": "<built-in function mul>"
-    },
-    {
-      "inputs": [
-        "mul_19",
         "mul_20"
       ],
-      "name": "add_15",
+      "name": "mul_25",
+      "op": "call_function",
+      "target": "<built-in function mul>"
+    },
+    {
+      "inputs": [
+        "mul_24",
+        "mul_25"
+      ],
+      "name": "add_18",
       "op": "call_function",
       "target": "<built-in function add>"
     },
     {
       "inputs": [
-        "add_15"
+        "add_18"
       ],
       "name": "sigmoid_1",
       "op": "call_function",
-      "target": "<built-in method sigmoid of type object at 0x00007FF9AC200E90>"
+      "target": "<built-in method sigmoid of type object at 0x00007FF812C1EE90>"
     },
     {
       "inputs": [
         "sigmoid_1",
         "valid_mask"
       ],
-      "name": "mul_21",
+      "name": "mul_26",
       "op": "call_function",
       "target": "<built-in function mul>"
     },
     {
       "inputs": [
-        "squeeze_3",
-        "defect_head",
-        "mul_21"
+        "squeeze",
+        "model_defect_head",
+        "mul_26"
       ],
       "name": "output",
       "op": "output",

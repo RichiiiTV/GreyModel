@@ -2,156 +2,137 @@
 
 ## Goal
 
-This repo is more than a backbone implementation. The framework should support dataset curation, staged training, evaluation, calibration, and explainability for grayscale syringe and vial inspection.
+The repo is a finetuning framework around the grayscale inspection backbone, not just a model definition. It covers:
+
+- dataset ingestion
+- staged training
+- evaluation
+- calibration
+- explainability
 
 ## Dataset Model
 
 ### Folder-First Import
 
-External data should be imported from folders, because that matches how inspection images are usually handed off in practice.
-
-Internally, the framework should normalize folders into versioned manifests so the training and evaluation runs are reproducible.
-
-### Public Hugging Face Pretraining Import
-
-Pretraining can also start from a public Hugging Face image dataset, but the framework should still materialize it locally before training.
-
-- Import the source dataset with `greymodel dataset build-hf`.
-- Preserve split intent from Hugging Face, while normalizing `validation` to `val`.
-- Enforce grayscale by default so pretraining does not silently drift into an RGB workflow.
-- Materialize local `.npy` images and reuse the same `manifest.jsonl` and `dataset_index.json` contracts as folder imports.
-- If the remote dataset is rate-limited, prefer a token-backed import with a stable cache directory and switch to local-cache-only replays once the cache is populated.
-- Mixed-resolution public imports should be grouped into pseudo-stations by image shape so inferred canvas sizes stay bounded during pretraining.
-
-### Internal Artifacts
-
-The canonical framework artifacts should include:
+External production data still enters as folders. The framework immediately normalizes it into:
 
 - `manifest.jsonl`
 - `splits.json`
 - `ontology.json`
 - `hard_negatives.jsonl`
+- `dataset_index.json`
 
-### Required Records
+This keeps the workflow reproducible while matching how inspection images are usually delivered.
 
-Each record should carry:
+### Public Hugging Face Import
 
-- image path
-- station ID
-- product family
-- geometry mode
-- image-level label
-- optional defect tags
-- optional boxes or masks
-- split assignment
-- capture metadata
+Public pretraining data uses the same internal contract.
 
-### Why This Matters
+`greymodel dataset build-hf` now supports curated presets through `--dataset-preset`, for example:
 
-Without manifests, the framework cannot reliably do:
+- `ds_dagm`
+- `defect_spectrum_full`
+- `mvtec_ad_gray`
 
-- leakage-safe splits by station, day, batch, and camera
-- hard-negative harvesting
-- review queues
-- repeatable finetuning experiments
+Key behavior:
+
+- grayscale is enforced by default
+- optional RGB-to-grayscale conversion is explicit
+- mixed resolutions are shape-bucketed into pseudo-stations
+- imported records are stored locally and trained through the same manifest interface as production data
 
 ## Training Workflow
 
-### Smoke Runs Versus Real Training
+### Smoke Runs Versus Real Runs
 
-The repo supports two different execution modes.
+Smoke runs are still useful for verifying manifests, startup, and graph export. Real jobs are:
 
-- Smoke runs are short, low-cost checks that validate wiring, manifests, and model startup.
-- Real training runs are epoch-based, checkpointed jobs launched through `torchrun` with native PyTorch DDP on a multi-GPU node.
+- epoch-based
+- checkpointed
+- resumable
+- metrics-driven
 
-Smoke runs are useful for development, but they are not a substitute for a production pretraining or finetuning job.
+### Distributed Strategy
 
-### Distributed Pretraining
+The framework is now `FSDP`-first for large pretraining jobs.
 
-Pretraining should be launched with `torchrun` so the same code path can scale across GPUs without changing the model contract.
+- `--distributed-strategy fsdp` is the default multi-GPU path
+- `--distributed-strategy ddp` remains available for finetune/debug use
+- activation checkpointing, channels-last, and memory telemetry are exposed in the public CLI
 
-- Use manifest-backed datasets and deterministic splits.
-- Shard data with DDP rather than hand-picking a single batch.
-- Track `epoch`, `global_step`, and optimizer/scheduler/scaler state in checkpoints.
-- Keep the run directory deterministic so a job can be resumed or audited later.
+### Patch-Based Public Pretraining
 
-On clusters, it is valid to wrap the saved entrypoint script in the scheduler command rather than inlining the full training command. For example, on a system that uses:
+Public pretraining no longer runs full imported public images through the backbone.
 
-```bash
-sbatch -c 8 --mem=50G --gres=gpu:8 -p batch_gpu -q 3h --wrap="cd /path/to/GreyModel && bash scripts/pretrain_8xa100_defect_spectrum.sh"
-```
+Instead:
 
-the saved script remains the canonical place for dataset import and pretraining defaults, while the scheduler command controls resources and queue policy.
+1. import the dataset into a manifest bundle
+2. sample bounded square crops from the imported full images at train time
+3. run masked reconstruction on those crops
 
-### Pretrain
+This is the main safeguard against the oversized public-image VRAM failures that the older flow triggered.
 
-Use large unlabeled grayscale imagery and masked-image pretraining to learn generic line and part structure.
+Important knobs:
 
-Recommended workflow:
+- `--pretrain-crop-size`
+- `--pretrain-num-crops`
+- `--pretrain-crop-scales`
+- `--max-global-feature-grid`
+- `--memory-report`
 
-1. Import a public grayscale Hugging Face dataset into `data/public_pretrain/`.
-2. Run `torchrun ... greymodel train pretrain` on that manifest.
-3. Build a separate manifest for your own production images.
-4. Warm-start `greymodel train finetune` from the best pretraining checkpoint.
+### Domain Adaptation
 
-### Domain Adapt
+Domain adaptation still runs on unlabeled production frames and keeps the shared manifest/index workflow.
 
-Adapt on unlabeled production frames from the target line before supervised finetuning.
+### Finetuning
 
-### Finetune
-
-Use image-level labels as the main supervision signal.
-
-- Add boxes or masks only for curated hard cases.
-- Keep the sampling station-aware.
-- Use hard clean negatives and recent false rejects/false accepts.
-
-### Calibrate
-
-Fit station-specific thresholds and, if needed, lightweight adapters.
+Finetuning still uses the full production station canvas and the existing reject/defect/heatmap contract. Station-balanced sampling remains available.
 
 ## Run Artifacts
 
-Training and evaluation jobs should write a predictable artifact set.
+Training runs write:
 
-- `metrics.jsonl` for per-step and per-epoch metrics.
-- `config_snapshot.json` for the resolved training configuration.
-- `manifest_snapshot.json` for the dataset/index references used by the run.
-- `checkpoints/` for latest and best checkpoints.
-- `reports/` for summary reports, calibration outputs, and benchmark results.
+- `metrics.jsonl`
+- `epoch_metrics.jsonl`
+- `config_snapshot.json`
+- `manifest_snapshot.json`
+- `checkpoints/latest.pt`
+- `checkpoints/best.pt`
+- `reports/<stage>_report.json`
+- `reports/training_summary.json`
+
+When `--memory-report` is enabled, step and epoch artifacts also include CUDA allocation and reserve metrics, plus per-rank summary memory when available.
 
 ## Evaluation
 
-Evaluation should be framework-level, not just loss reporting.
+Evaluation remains framework-level:
 
-- Report FAR, FRR, AUROC, and PR curves.
-- Slice metrics by tiny, medium, and global defects.
-- Break metrics out by station and product family.
-- Include hard clean negatives and small-particle challenge sets.
+- FAR
+- FRR
+- AUROC
+- PR behavior
+- per-defect-family slices
+- tiny / medium / global defect slices
+- per-station behavior
 
 ## Explainability
 
-The explainability stack should include both architecture-level and sample-level artifacts.
+The explainability stack still includes:
 
-- Architecture graph from `torch.fx`.
-- Mermaid graph output as the baseline artifact.
-- Optional SVG or DOT if Graphviz is installed.
-- Per-sample saliency or integrated gradients.
-- Tile overlays and heatmaps for operator review.
+- `torch.fx` architecture graph export
+- Mermaid graph output
+- sample-level attribution bundles
+- heatmaps and top tiles
+
+The graph exporter was updated to follow the current CNN-heavy model instead of the earlier transformer-specific internals.
 
 ## CLI Shape
 
-The framework should expose four command groups:
+The CLI groups remain:
 
-- `dataset`: scan, validate, split, and mine hard negatives.
-- `train`: pretrain, domain adapt, finetune, resume, and calibrate.
-- `eval`: benchmark and threshold sweep.
-- `explain`: graph export and per-sample audit bundles.
+- `dataset`
+- `train`
+- `eval`
+- `explain`
 
-## Practical Constraints
-
-- Keep `Base` and `Lite` identical at the I/O level.
-- Preserve `5x5` defect sensitivity.
-- Avoid aspect-ratio distortion.
-- Keep grayscale as first-class input, not RGB conversion.
-- Keep all framework outputs easy to audit and version.
+The public shape did not change, but `train pretrain` now accepts the new patch-pretraining and distributed-runtime flags directly.

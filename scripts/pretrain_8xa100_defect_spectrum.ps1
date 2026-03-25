@@ -18,20 +18,25 @@ $NumWorkers = if ($env:NUM_WORKERS) { $env:NUM_WORKERS } else { "8" }
 $LogEveryNSteps = if ($env:LOG_EVERY_N_STEPS) { $env:LOG_EVERY_N_STEPS } else { "10" }
 $CheckpointEveryNSteps = if ($env:CHECKPOINT_EVERY_N_STEPS) { $env:CHECKPOINT_EVERY_N_STEPS } else { "200" }
 $KeepLastKCheckpoints = if ($env:KEEP_LAST_K_CHECKPOINTS) { $env:KEEP_LAST_K_CHECKPOINTS } else { "5" }
+$PretrainCropSize = if ($env:PRETRAIN_CROP_SIZE) { $env:PRETRAIN_CROP_SIZE } else { "512" }
+$PretrainNumCrops = if ($env:PRETRAIN_NUM_CROPS) { $env:PRETRAIN_NUM_CROPS } else { "2" }
+$PretrainCropScales = if ($env:PRETRAIN_CROP_SCALES) { $env:PRETRAIN_CROP_SCALES } else { "0.75 1.0 1.25" }
+$MaxGlobalFeatureGrid = if ($env:MAX_GLOBAL_FEATURE_GRID) { $env:MAX_GLOBAL_FEATURE_GRID } else { "12" }
+$DistStrategy = if ($env:DIST_STRATEGY) { $env:DIST_STRATEGY } else { "fsdp" }
+$CropScaleArgs = $PretrainCropScales -split "\s+" | Where-Object { $_ -ne "" }
 
 $env:USE_LIBUV = "0"
 
 Write-Host "[GreyModel] Importing DefectSpectrum and converting to 8-bit grayscale at $DatasetDir"
 & $PythonBin -m greymodel dataset build-hf `
-  --dataset-name "DefectSpectrum/Defect_Spectrum" `
+  --dataset-preset "defect_spectrum_full" `
   --output-dir $DatasetDir `
-  --source-dataset "DefectSpectrum/Defect_Spectrum:full" `
   --allow-rgb-conversion
 
 Write-Host "[GreyModel] Validating imported manifest"
 & $PythonBin -m greymodel dataset validate "$DatasetDir\manifest.jsonl"
 
-Write-Host "[GreyModel] Launching 8xA100 pretraining"
+Write-Host "[GreyModel] Launching 8xA100 patch-based pretraining with $DistStrategy"
 & $TorchrunBin --standalone --nproc_per_node=$NprocPerNode -m greymodel train pretrain `
   --manifest "$DatasetDir\manifest.jsonl" `
   --index "$DatasetDir\dataset_index.json" `
@@ -42,6 +47,14 @@ Write-Host "[GreyModel] Launching 8xA100 pretraining"
   --global-batch-size $GlobalBatchSize `
   --num-workers $NumWorkers `
   --precision auto `
+  --distributed-strategy $DistStrategy `
+  --activation-checkpointing `
+  --memory-report `
+  --pretrain-crop-size $PretrainCropSize `
+  --pretrain-num-crops $PretrainNumCrops `
+  --pretrain-crop-scales $CropScaleArgs `
+  --max-global-feature-grid $MaxGlobalFeatureGrid `
+  --channels-last `
   --log-every-n-steps $LogEveryNSteps `
   --checkpoint-every-n-steps $CheckpointEveryNSteps `
   --keep-last-k-checkpoints $KeepLastKCheckpoints

@@ -2,160 +2,156 @@
 
 ## Overview
 
-`GreyModel` is built for visual inspection of syringes and vials where defect scale varies from a few pixels to the full frame. The architecture is intentionally hybrid:
+`GreyModel` is built for grayscale syringe and vial inspection where defect scale ranges from micro-particles to full-frame anomalies. The current `GrayInspect-H` implementation is a CNN-heavy hybrid:
 
-- A small-stride CNN stem keeps fine grayscale contrast alive.
-- A global transformer branch captures whole-object geometry and broad defects.
-- A local tiled branch preserves tiny defects and produces weak localization.
-- Station and geometry conditioning let one shared model work across square and rectangular stations.
+- grayscale stem
+- ConvNeXt-style feature pyramid
+- BiFPN-style top-down and bottom-up fusion
+- one bounded coarse-context block at the lowest-resolution feature map
+- a separate local tile branch for tiny defects
+- station and geometry conditioning
+- fused reject, defect-family, and weak heatmap heads
 
-The model is not designed as a generic image classifier. It is built around inline inspection constraints, reproducible calibration, and auditability.
+The inference contract did not change, but the training internals were redesigned for lower VRAM usage and more robust public-data pretraining.
 
-## Data Flow
+## Preprocessing
 
-### 1. Input
+Input remains:
 
-The public input is a single `uint8` grayscale image plus station metadata:
+- one `uint8` grayscale image
+- `station_id`
+- `geometry_mode` (`rect` or `square`)
 
-- `image_uint8`: `H x W`, values `0-255`.
-- `station_id`: used for station-specific conditioning and calibration.
-- `geometry_mode`: `rect` or `square`.
+Preprocessing still:
 
-### 2. Preprocessing
+- preserves aspect ratio
+- pads to the station canvas
+- emits a valid-pixel mask
+- normalizes after padding
 
-The preprocessing path preserves the image aspect ratio.
+This keeps geometry intact across rectangular and square stations and prevents padding from leaking into the model.
 
-- Resize with aspect fit.
-- Pad to the station canvas.
-- Emit a valid-pixel mask.
-- Normalize only after padding.
+## Backbone
 
-This matters because the model should not learn from distorted geometry, especially when the same model has to handle both rectangular and square stations.
+### Grayscale Stem
 
-### 3. Shared Backbone
+The stem uses small-stride convolutions to retain fine grayscale contrast before the pyramid gets deeper. This is the first guardrail for `5x5`-scale defects.
 
-The backbone is `GrayInspect-H`.
+### ConvNeXt-Style Pyramid
 
-- The CNN stem extracts early features without aggressive downsampling.
-- The global branch works on the padded frame to model fill level, container shape, scratches, cracks, and occlusions.
-- The local branch processes overlapping tiles to keep `5x5` defects visible.
-- The station-conditioning path modulates features with station and geometry embeddings.
+After the stem, the backbone builds feature maps at roughly:
 
-## Model Blocks
+- `1/4`
+- `1/8`
+- `1/16`
+- `1/32`
 
-### CNN Stem
+Each stage uses ConvNeXt-style depthwise-heavy blocks, with station/geometry conditioning applied between stages.
 
-The stem is deliberately small-stride.
+### BiFPN-Style Fusion
 
-- It avoids destroying micro-defect evidence too early.
-- It produces feature maps that still retain local intensity differences.
-- It feeds both the local and global branches.
+The pyramid is fused with repeated BiFPN-style blocks. This keeps high-resolution detail alive while still letting low-resolution semantic context propagate back upward.
 
-### Global Branch
+The weak heatmap head is attached to the high-resolution fused feature map, not to the coarse global map, so localization stays sharp enough for audit and relabeling workflows.
 
-The global branch is a hierarchical transformer over the padded frame.
+### Bounded Coarse Context
 
-- It captures long-range structure and full-image anomalies.
-- It uses relative positional bias so the same model can handle rectangular and square canvases.
-- It receives the valid-pixel mask to ignore padded regions.
+The global context path is now bounded. Only the lowest-resolution feature map passes through a coarse-context attention block, and the exported global feature map is pooled down to `max_global_feature_grid`.
 
-### Local Branch
+That is the key difference from the older transformer-heavy design:
 
-The local branch runs on overlapping tiles.
+- context is still global
+- memory is no longer allowed to scale with the full imported public image size
 
-- It preserves small defects that would disappear in a global downsample.
-- It produces tile scores and tile embeddings.
-- It supports weak localization even when training labels are image-level only.
+### Local Defect Branch
 
-### Fusion
+The local branch still uses overlapping tiles extracted from the padded image. It exists for one reason: tiny defects do not survive a purely coarse global path.
 
-Local and global features are fused before the final heads.
+The local branch produces:
 
-- A gating module balances local evidence against global context.
-- This is important when a defect is tiny but should still be judged in the context of the whole part.
-- The fused representation feeds the reject and defect-family heads.
+- tile logits
+- top-tile evidence
+- a local heatmap
 
-### Heads
+These are fused with the coarse global signal before the final decision heads.
 
-The framework exposes three main outputs.
+## Conditioning
 
-- `accept/reject` logit and score.
-- Multi-label defect family probabilities.
-- A weak heatmap for audit and later relabeling.
+`station_id` and `geometry_mode` are embedded and fed into lightweight affine conditioning layers. This keeps one shared backbone across stations instead of splitting the system into separate station-specific networks.
 
-## Tiny Defect Preservation
+## Heads
 
-The architecture is specifically tuned for tiny defects.
+The model exposes:
 
-- Use aspect-preserving preprocessing instead of rescaling into a fixed square.
-- Keep a valid mask so padding does not pollute feature learning.
-- Use overlapping tiles so a `5x5` defect is seen in more than one context window.
-- Avoid collapsing local and global evidence into a single pooled vector too early.
+- binary accept/reject logit and score
+- multi-label defect-family logits and probabilities
+- weak heatmap
+- top tile evidence
 
-## Base And Lite
+`Base` and `Lite` keep the same public outputs. `Lite` reduces channel counts, fusion repeats, and local-path capacity without changing the contract.
 
-### Base
+## Tiny-Defect Protection
 
-- Higher-capacity model for industrial GPU inference.
-- More tile overlap.
-- Stronger local detail retention.
-- Best for the highest inline quality target.
+The design preserves tiny evidence through several layers of protection:
 
-### Lite
-
-- Distilled or reduced-capacity model for constrained environments.
-- Lower overlap.
-- Smaller transformer depth.
-- Same public input and output contract as `Base`.
+- aspect-preserving preprocessing
+- valid-mask-aware training
+- overlapping local tiles
+- high-resolution fused heatmap head
+- delayed fusion of local and global evidence
 
 ## Training Stages
 
-### Pretraining
+### Public Pretraining
 
-Pretrain on unlabeled grayscale industrial imagery with masked-image or self-supervised objectives.
+Public-data pretraining is now patch-based by default.
 
-- The production path is epoch-based and checkpointed.
-- Use `torchrun` and native PyTorch DDP on multi-GPU nodes.
-- Save the backbone, reconstruction head, optimizer state, scheduler state, scaler state, and run metadata.
+The workflow is:
+
+1. import a public Hugging Face dataset into a manifest bundle
+2. keep the imported full images on disk
+3. sample bounded square grayscale crops at train time
+4. run masked reconstruction on those crops with `global_only` forward mode
+
+This is the main VRAM fix for heterogeneous public datasets.
 
 ### Domain Adaptation
 
-Adapt on unlabeled production frames from the target line so the model learns station optics, motion, and background statistics.
+Domain adaptation keeps the same manifest contract but uses the production unlabeled images. The objective remains consistency between local and global evidence.
 
-### Supervised Finetuning
+### Finetuning
 
-Finetune on image-level labels, with optional boxes or masks on curated hard cases.
+Finetuning uses the full production station canvas and the shared reject/defect/heatmap heads. `DDP` remains available here as a simpler fallback.
 
 ### Calibration
 
-Fit per-station thresholds and lightweight adapters without splitting into separate backbone models.
+Calibration is still per-station and external to the shared backbone.
 
-## Checkpointing And Audit
+## Distributed Runtime
 
-Real training jobs should distinguish between one-off smoke checks and production runs.
+The training runtime is now:
 
-- Smoke runs validate shape, import, and graph/export behavior.
-- Production runs are epoch-based and resume from checkpoint.
-- Every checkpoint should carry stage, epoch, global step, manifest path, index path, and resolved config metadata.
-- Run artifacts should include per-step metrics, per-epoch summaries, best/latest checkpoints, and calibration or benchmark reports when applicable.
+- `FSDP`-first for multi-GPU pretraining
+- `DDP` fallback for finetune/debug flows
+- optional activation checkpointing
+- `bf16`/`fp16` autocast
+- channels-last support
+- explicit memory telemetry in metrics and reports
 
-## Explainability And Audit
+## Explainability
 
-The architecture is meant to produce inspectable artifacts.
+The architecture graph is still exported through `torch.fx`, but the adapter is now aligned with the CNN-heavy implementation rather than the old transformer branch.
 
-- Tile scores for local evidence.
-- Heatmaps for weak localization.
-- Architecture graphs for model documentation.
-- Sample-level explanation bundles for QA and operator review.
+Sample-level XAI still includes:
 
-The committed graph exports are generated from a traceable adapter around the live PyTorch model so the architecture docs stay aligned with the implementation.
+- attribution map
+- heatmap
+- top tiles
+- prediction bundle
 
-- Base graph: `docs/graphs/base/model_graph.mmd`
-- Lite graph: `docs/graphs/lite/model_graph.mmd`
-- The graph exporter always writes Mermaid and JSON, and will add Graphviz DOT only when `dot` is available.
+Graph artifacts remain:
 
-## References For The Framework
+- `docs/graphs/base/model_graph.mmd`
+- `docs/graphs/lite/model_graph.mmd`
 
-- Use `torch.fx` for graph tracing.
-- Use a modern PyTorch-compatible attribution library such as Captum for saliency and integrated gradients.
-- Treat the older CNN visualization repository as inspiration only, not as a runtime dependency.
+Mermaid is always written; DOT is still optional when Graphviz is available.

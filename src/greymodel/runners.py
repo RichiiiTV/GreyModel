@@ -33,9 +33,11 @@ from .training import (
     build_autocast_context,
     build_grad_scaler,
     build_scheduler,
+    enforce_memory_guardrails,
     compute_domain_adaptation_objective,
     compute_masked_pretrain_objective,
     compute_supervised_objective,
+    sample_pretrain_crops,
     seed_everything,
 )
 from .types import TensorBatch
@@ -91,6 +93,7 @@ class DistributedContext:
     local_rank: int
     device: Any
     backend: str
+    strategy: str
     created_process_group: bool = False
 
     @property
@@ -117,6 +120,34 @@ def _builder_for_variant(variant: str):
     return build_lite_model if variant == "lite" else build_base_model
 
 
+def _require_fsdp():
+    try:
+        from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
+            CheckpointImpl,
+            apply_activation_checkpointing,
+            checkpoint_wrapper,
+        )
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+        from torch.distributed.fsdp import ShardingStrategy
+        from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
+    except ImportError as exc:
+        raise ImportError("PyTorch FSDP support is required for the fsdp training strategy.") from exc
+    return FSDP, ShardingStrategy, size_based_auto_wrap_policy, checkpoint_wrapper, CheckpointImpl, apply_activation_checkpointing
+
+
+def _resolve_strategy(training_config: TrainingConfig, enabled: bool, device) -> str:
+    requested = str(training_config.distributed_strategy).lower()
+    if not enabled:
+        return "single"
+    if requested == "auto":
+        requested = "fsdp"
+    if requested == "fsdp" and getattr(device, "type", "cpu") != "cuda":
+        return "ddp"
+    if requested not in {"fsdp", "ddp"}:
+        return "ddp"
+    return requested
+
+
 def _resolve_backend(distributed_backend: str, device) -> str:
     backend = distributed_backend.lower()
     if backend != "auto":
@@ -138,6 +169,7 @@ def _init_distributed(training_config: TrainingConfig) -> DistributedContext:
     created_process_group = False
     enabled = world_size > 1
     backend = _resolve_backend(training_config.distributed_backend, device)
+    strategy = _resolve_strategy(training_config, enabled, device)
     if enabled and not dist.is_initialized():
         dist.init_process_group(backend=backend, init_method="env://")
         created_process_group = True
@@ -148,6 +180,7 @@ def _init_distributed(training_config: TrainingConfig) -> DistributedContext:
         local_rank=local_rank,
         device=device,
         backend=backend,
+        strategy=strategy,
         created_process_group=created_process_group,
     )
 
@@ -203,6 +236,7 @@ def _prepare_run(
                 "rank": context.rank,
                 "world_size": context.world_size,
                 "backend": context.backend,
+                "strategy": context.strategy,
             },
         )
     _maybe_barrier(context)
@@ -231,15 +265,33 @@ def _collate_for_training(items, defect_families: Sequence[str]):
     }
 
 
-def _move_training_batch_to_device(batch_payload: Mapping[str, Any], device) -> Mapping[str, Any]:
+def _move_training_batch_to_device(batch_payload: Mapping[str, Any], device, channels_last: bool = False) -> Mapping[str, Any]:
+    torch, _, _, _ = _require_torch()
     if getattr(device, "type", "cpu") == "cpu":
+        if channels_last:
+            model_input = batch_payload["model_input"]
+            return {
+                **batch_payload,
+                "model_input": TensorBatch(
+                    image=model_input.image.contiguous(memory_format=torch.channels_last),
+                    valid_mask=model_input.valid_mask.contiguous(memory_format=torch.channels_last),
+                    station_id=model_input.station_id,
+                    geometry_id=model_input.geometry_id,
+                    metadata=model_input.metadata,
+                ),
+            }
         return batch_payload
     model_input = batch_payload["model_input"]
+    image = model_input.image.to(device, non_blocking=True)
+    valid_mask = model_input.valid_mask.to(device, non_blocking=True)
+    if channels_last:
+        image = image.contiguous(memory_format=torch.channels_last)
+        valid_mask = valid_mask.contiguous(memory_format=torch.channels_last)
     return {
         **batch_payload,
         "model_input": TensorBatch(
-            image=model_input.image.to(device, non_blocking=True),
-            valid_mask=model_input.valid_mask.to(device, non_blocking=True),
+            image=image,
+            valid_mask=valid_mask,
             station_id=model_input.station_id.to(device, non_blocking=True),
             geometry_id=model_input.geometry_id.to(device, non_blocking=True),
             metadata=model_input.metadata,
@@ -334,21 +386,55 @@ def _normalize_model_input(model_input: TensorBatch, num_stations: int) -> Tenso
 def _build_modules(stage: str, variant: str, defect_families: Sequence[str]):
     torch, _, _, _ = _require_torch()
     builder = _builder_for_variant(variant)
-    backbone = builder(num_defect_families=max(len(defect_families), 1), defect_families=defect_families)
+    return builder, torch
+
+
+def _instantiate_modules(stage: str, variant: str, defect_families: Sequence[str], training_config: TrainingConfig):
+    builder, torch = _build_modules(stage, variant, defect_families)
+    backbone = builder(
+        num_defect_families=max(len(defect_families), 1),
+        defect_families=defect_families,
+        activation_checkpointing=bool(training_config.activation_checkpointing),
+        max_global_feature_grid=max(4, int(training_config.max_global_feature_grid)),
+    )
     auxiliary_modules: Dict[str, Any] = {}
     if stage == "pretrain":
         auxiliary_modules["reconstruction_head"] = torch.nn.Conv2d(backbone.config.global_hidden_dim, 1, kernel_size=1)
     return backbone, auxiliary_modules
 
 
-def _move_modules_to_device(backbone, auxiliary_modules: Mapping[str, Any], device):
+def _move_modules_to_device(backbone, auxiliary_modules: Mapping[str, Any], device, training_config: TrainingConfig):
     backbone = backbone.to(device)
     moved_auxiliary = {name: module.to(device) for name, module in auxiliary_modules.items()}
+    if bool(training_config.channels_last):
+        torch, _, _, _ = _require_torch()
+        backbone = backbone.to(memory_format=torch.channels_last)
+        moved_auxiliary = {name: module.to(memory_format=torch.channels_last) for name, module in moved_auxiliary.items()}
     return backbone, moved_auxiliary
 
 
 def _stage_uses_partial_backbone(stage: str) -> bool:
     return stage in {"pretrain", "domain_adapt"}
+
+
+def _configure_activation_checkpointing(backbone, training_config: TrainingConfig):
+    if not bool(training_config.activation_checkpointing):
+        return backbone
+    try:
+        from .models.grayinspect import BiFPNBlock, CoarseContextBlock, ConvNeXtBlock
+    except Exception:
+        return backbone
+    FSDP, ShardingStrategy, size_based_auto_wrap_policy, checkpoint_wrapper, CheckpointImpl, apply_activation_checkpointing = _require_fsdp()
+
+    def _checkpointable(module):
+        return isinstance(module, (ConvNeXtBlock, BiFPNBlock, CoarseContextBlock))
+
+    wrapper = partial(
+        checkpoint_wrapper,
+        checkpoint_impl=CheckpointImpl.NO_REENTRANT,
+    )
+    apply_activation_checkpointing(backbone, checkpoint_wrapper_fn=wrapper, check_fn=_checkpointable)
+    return backbone
 
 
 def _wrap_modules_for_ddp(backbone, auxiliary_modules: Mapping[str, Any], context: DistributedContext, stage: str):
@@ -368,8 +454,53 @@ def _wrap_modules_for_ddp(backbone, auxiliary_modules: Mapping[str, Any], contex
     return backbone, wrapped_auxiliary
 
 
+def _wrap_modules_for_fsdp(backbone, auxiliary_modules: Mapping[str, Any], context: DistributedContext, training_config: TrainingConfig):
+    if not context.enabled:
+        return backbone, dict(auxiliary_modules)
+    FSDP, ShardingStrategy, size_based_auto_wrap_policy, _, _, _ = _require_fsdp()
+    auto_wrap = partial(size_based_auto_wrap_policy, min_num_params=50000)
+    fsdp_kwargs = {
+        "auto_wrap_policy": auto_wrap,
+        "device_id": context.local_rank if getattr(context.device, "type", "cpu") == "cuda" else None,
+        "sharding_strategy": ShardingStrategy.FULL_SHARD,
+        "use_orig_params": True,
+        "limit_all_gathers": True,
+    }
+    backbone = FSDP(backbone, **fsdp_kwargs)
+    wrapped_auxiliary = {name: FSDP(module, **fsdp_kwargs) for name, module in auxiliary_modules.items()}
+    return backbone, wrapped_auxiliary
+
+
+def _wrap_modules_for_strategy(
+    backbone,
+    auxiliary_modules: Mapping[str, Any],
+    context: DistributedContext,
+    stage: str,
+    training_config: TrainingConfig,
+):
+    backbone = _configure_activation_checkpointing(backbone, training_config)
+    if context.strategy == "fsdp":
+        return _wrap_modules_for_fsdp(backbone, auxiliary_modules, context, training_config)
+    return _wrap_modules_for_ddp(backbone, auxiliary_modules, context, stage=stage)
+
+
 def _unwrap_module(module):
-    return getattr(module, "module", module)
+    if hasattr(module, "module"):
+        return module.module
+    if module.__class__.__name__ == "FullyShardedDataParallel" and hasattr(module, "_fsdp_wrapped_module"):
+        wrapped = module._fsdp_wrapped_module
+        return getattr(wrapped, "module", wrapped)
+    return module
+
+
+def _maybe_compile_modules(backbone, auxiliary_modules: Mapping[str, Any], training_config: TrainingConfig, context: DistributedContext):
+    torch, _, _, _ = _require_torch()
+    if not bool(training_config.compile_model):
+        return backbone, dict(auxiliary_modules)
+    if not hasattr(torch, "compile") or context.strategy != "single":
+        return backbone, dict(auxiliary_modules)
+    backbone = torch.compile(backbone)
+    return backbone, dict(auxiliary_modules)
 
 
 def _optimizer_and_scheduler(backbone, auxiliary_modules: Mapping[str, Any], training_config: TrainingConfig, total_optimizer_steps: int):
@@ -397,6 +528,7 @@ def _checkpoint_payload(
     optimizer,
     scheduler,
     scaler,
+    ema_state: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ):
     return {
         "stage": stage,
@@ -410,6 +542,7 @@ def _checkpoint_payload(
         "defect_families": list(defect_families),
         "model_state": _unwrap_module(backbone).state_dict(),
         "auxiliary_state": {name: _unwrap_module(module).state_dict() for name, module in auxiliary_modules.items()},
+        "ema_state": dict(ema_state or {}),
         "optimizer_state": optimizer.state_dict() if optimizer is not None else None,
         "scheduler_state": scheduler.state_dict() if scheduler is not None else None,
         "scaler_state": scaler.state_dict() if scaler is not None else None,
@@ -530,6 +663,72 @@ def _metric_value(value: Any) -> float:
     return float(value)
 
 
+def _memory_metrics(context: DistributedContext) -> Dict[str, float]:
+    torch, dist, _, _ = _require_torch()
+    if getattr(context.device, "type", "cpu") != "cuda":
+        return {}
+    stats = {
+        "memory_allocated_mb": float(torch.cuda.memory_allocated(context.device) / (1024.0 * 1024.0)),
+        "memory_reserved_mb": float(torch.cuda.memory_reserved(context.device) / (1024.0 * 1024.0)),
+        "memory_peak_allocated_mb": float(torch.cuda.max_memory_allocated(context.device) / (1024.0 * 1024.0)),
+        "memory_peak_reserved_mb": float(torch.cuda.max_memory_reserved(context.device) / (1024.0 * 1024.0)),
+    }
+    if context.enabled and dist.is_initialized():
+        reduced = {}
+        for key, value in stats.items():
+            tensor = torch.as_tensor(value, dtype=torch.float32, device=context.device)
+            dist.all_reduce(tensor, op=dist.ReduceOp.MAX)
+            reduced["max_%s" % key] = float(tensor.detach().cpu().item())
+        stats.update(reduced)
+    return stats
+
+
+def _rank_memory_snapshot(context: DistributedContext) -> Optional[Dict[str, float]]:
+    torch, dist, _, _ = _require_torch()
+    if getattr(context.device, "type", "cpu") != "cuda":
+        return None
+    payload = {
+        "rank": int(context.rank),
+        "allocated_mb": float(torch.cuda.memory_allocated(context.device) / (1024.0 * 1024.0)),
+        "reserved_mb": float(torch.cuda.memory_reserved(context.device) / (1024.0 * 1024.0)),
+        "peak_allocated_mb": float(torch.cuda.max_memory_allocated(context.device) / (1024.0 * 1024.0)),
+        "peak_reserved_mb": float(torch.cuda.max_memory_reserved(context.device) / (1024.0 * 1024.0)),
+    }
+    if not context.enabled or not dist.is_initialized():
+        return payload
+    gathered = [None for _ in range(context.world_size)] if context.is_main_process else None
+    dist.gather_object(payload, gathered, dst=0)
+    return {"ranks": gathered} if context.is_main_process else None
+
+
+def _reset_peak_memory(context: DistributedContext) -> None:
+    torch, _, _, _ = _require_torch()
+    if getattr(context.device, "type", "cpu") == "cuda":
+        torch.cuda.reset_peak_memory_stats(context.device)
+
+
+class ExponentialMovingAverage:
+    def __init__(self, modules: Mapping[str, Any], decay: float) -> None:
+        self.decay = float(decay)
+        self.state = {
+            name: {key: value.detach().cpu().clone() for key, value in _unwrap_module(module).state_dict().items()}
+            for name, module in modules.items()
+        }
+
+    def update(self, modules: Mapping[str, Any]) -> None:
+        if self.decay <= 0.0:
+            return
+        for name, module in modules.items():
+            current_state = _unwrap_module(module).state_dict()
+            shadow = self.state.setdefault(name, {})
+            for key, value in current_state.items():
+                detached = value.detach().cpu()
+                if key not in shadow:
+                    shadow[key] = detached.clone()
+                    continue
+                shadow[key].mul_(self.decay).add_(detached, alpha=1.0 - self.decay)
+
+
 def _validation_epoch(
     stage: str,
     backbone,
@@ -549,8 +748,15 @@ def _validation_epoch(
 
     with torch.no_grad():
         for batch_payload in loader:
-            batch_payload = _move_training_batch_to_device(batch_payload, context.device)
+            batch_payload = _move_training_batch_to_device(
+                batch_payload,
+                context.device,
+                channels_last=bool(training_config.channels_last),
+            )
             model_input = _normalize_model_input(batch_payload["model_input"], _unwrap_module(backbone).config.num_stations)
+            if stage == "pretrain":
+                model_input = sample_pretrain_crops(model_input, training_config)
+            enforce_memory_guardrails(model_input, training_config, stage)
             with build_autocast_context(training_config, context.device):
                 if stage == "pretrain":
                     loss, metrics, _ = compute_masked_pretrain_objective(
@@ -612,11 +818,26 @@ def _run_training_loop(
         total_micro_steps = min(len(train_loader), training_config.steps_per_epoch or len(train_loader))
         total_optimizer_steps_per_epoch = max(1, math.ceil(total_micro_steps / float(resolved_grad_accum_steps)))
         total_optimizer_steps = max(1, training_config.epochs * total_optimizer_steps_per_epoch)
-        backbone, auxiliary_modules = _build_modules(stage, variant, defect_families)
-        backbone, auxiliary_modules = _move_modules_to_device(backbone, auxiliary_modules, distributed_context.device)
-        backbone, auxiliary_modules = _wrap_modules_for_ddp(backbone, auxiliary_modules, distributed_context, stage=stage)
+        backbone, auxiliary_modules = _instantiate_modules(stage, variant, defect_families, training_config)
+        backbone, auxiliary_modules = _move_modules_to_device(
+            backbone,
+            auxiliary_modules,
+            distributed_context.device,
+            training_config,
+        )
+        backbone, auxiliary_modules = _wrap_modules_for_strategy(
+            backbone,
+            auxiliary_modules,
+            distributed_context,
+            stage=stage,
+            training_config=training_config,
+        )
+        backbone, auxiliary_modules = _maybe_compile_modules(backbone, auxiliary_modules, training_config, distributed_context)
         optimizer, scheduler = _optimizer_and_scheduler(backbone, auxiliary_modules, training_config, total_optimizer_steps)
         scaler = build_grad_scaler(training_config, distributed_context.device)
+        ema_tracker = None
+        if float(training_config.ema_decay) > 0.0 and distributed_context.strategy == "single":
+            ema_tracker = ExponentialMovingAverage({"backbone": backbone, **auxiliary_modules}, decay=training_config.ema_decay)
 
         full_resume_path = resume_from or training_config.resume_from
         if full_resume_path is not None and Path(full_resume_path).exists():
@@ -647,6 +868,7 @@ def _run_training_loop(
                 "checkpoint_path": str(checkpoint_path) if checkpoint_path is not None else None,
                 "resume_from": str(full_resume_path) if full_resume_path is not None else None,
                 "effective_global_batch_size": training_config.effective_global_batch_size(distributed_context.world_size),
+                "distributed_strategy": distributed_context.strategy,
             },
             distributed_context,
         )
@@ -664,6 +886,7 @@ def _run_training_loop(
             for module in auxiliary_modules.values():
                 module.train()
             optimizer.zero_grad(set_to_none=True)
+            _reset_peak_memory(distributed_context)
             micro_loss_total = 0.0
             micro_metrics_total: Dict[str, float] = {}
             micro_sample_total = 0
@@ -682,8 +905,15 @@ def _run_training_loop(
                 for micro_step_index, batch_payload in enumerate(train_loader, start=1):
                     if micro_step_index > effective_micro_steps:
                         break
-                    batch_payload = _move_training_batch_to_device(batch_payload, distributed_context.device)
+                    batch_payload = _move_training_batch_to_device(
+                        batch_payload,
+                        distributed_context.device,
+                        channels_last=bool(training_config.channels_last),
+                    )
                     model_input = _normalize_model_input(batch_payload["model_input"], _unwrap_module(backbone).config.num_stations)
+                    if stage == "pretrain":
+                        model_input = sample_pretrain_crops(model_input, training_config)
+                    enforce_memory_guardrails(model_input, training_config, stage)
                     with build_autocast_context(training_config, distributed_context.device):
                         if stage == "pretrain":
                             loss, metrics, _ = compute_masked_pretrain_objective(
@@ -745,6 +975,8 @@ def _run_training_loop(
                         optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
                     scheduler.step()
+                    if ema_tracker is not None:
+                        ema_tracker.update({"backbone": backbone, **auxiliary_modules})
                     global_step += 1
                     optimizer_steps_this_epoch += 1
 
@@ -761,8 +993,11 @@ def _run_training_loop(
                             "global_step": global_step,
                             "samples_per_second": float(total_samples_seen) / max(time.perf_counter() - stage_start_time, 1e-6),
                             "effective_global_batch_size": training_config.effective_global_batch_size(distributed_context.world_size),
+                            "distributed_strategy": distributed_context.strategy,
                         }
                     )
+                    if training_config.memory_report:
+                        train_metrics.update(_memory_metrics(distributed_context))
                     if distributed_context.is_main_process and (
                         global_step == 1 or global_step % max(training_config.log_every_n_steps, 1) == 0
                     ):
@@ -801,6 +1036,7 @@ def _run_training_loop(
                                     optimizer,
                                     scheduler,
                                     scaler,
+                                    ema_state=ema_tracker.state if ema_tracker is not None else None,
                                 ),
                                 "best.pt",
                                 best=True,
@@ -825,6 +1061,7 @@ def _run_training_loop(
                                 optimizer,
                                 scheduler,
                                 scaler,
+                                ema_state=ema_tracker.state if ema_tracker is not None else None,
                             ),
                             "%s-step-%06d.pt" % (stage, global_step),
                             periodic_prefix="%s-step" % stage,
@@ -854,8 +1091,11 @@ def _run_training_loop(
                     "global_step": global_step,
                     "optimizer_steps": optimizer_steps_this_epoch,
                     "learning_rate": float(optimizer.param_groups[0]["lr"]),
+                    "distributed_strategy": distributed_context.strategy,
                 }
             )
+            if training_config.memory_report:
+                reduced_epoch_metrics.update(_memory_metrics(distributed_context))
             if distributed_context.is_main_process:
                 log_epoch_metrics(run_context, reduced_epoch_metrics)
 
@@ -880,6 +1120,7 @@ def _run_training_loop(
                         optimizer,
                         scheduler,
                         scaler,
+                        ema_state=ema_tracker.state if ema_tracker is not None else None,
                     ),
                     "best.pt",
                     best=True,
@@ -903,6 +1144,7 @@ def _run_training_loop(
                     optimizer,
                     scheduler,
                     scaler,
+                    ema_state=ema_tracker.state if ema_tracker is not None else None,
                 ),
                 "%s-epoch-%03d.pt" % (stage, epoch + 1),
                 periodic_prefix="%s-epoch" % stage,
@@ -921,7 +1163,13 @@ def _run_training_loop(
                 "effective_global_batch_size": training_config.effective_global_batch_size(distributed_context.world_size),
                 "world_size": distributed_context.world_size,
                 "samples_per_second": float(total_samples_seen) / max(time.perf_counter() - stage_start_time, 1e-6),
+                "distributed_strategy": distributed_context.strategy,
             }
+            if training_config.memory_report:
+                summary_payload.update(_memory_metrics(distributed_context))
+                rank_memory = _rank_memory_snapshot(distributed_context)
+                if rank_memory is not None:
+                    summary_payload["rank_memory"] = rank_memory.get("ranks", rank_memory)
             if distributed_context.is_main_process:
                 latest_report_path = write_json(run_context.reports_dir / ("%s_report.json" % stage), {**summary_payload, **reduced_epoch_metrics})
                 write_summary(run_context, {**summary_payload, **reduced_epoch_metrics})
@@ -934,6 +1182,7 @@ def _run_training_loop(
                     "epoch": training_config.epochs,
                     "global_step": global_step,
                     "best_val_metric": best_val_metric,
+                    "distributed_strategy": distributed_context.strategy,
                 },
             )
         _maybe_barrier(distributed_context)
@@ -1069,7 +1318,7 @@ def run_benchmark_stage(
     variant: str = "base",
     run_root: Path | str = "artifacts",
 ) -> StageResult:
-    distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", False)
+    distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", "single", False)
     run_context = _prepare_run(
         manifest_path,
         index_path,
@@ -1102,7 +1351,7 @@ def run_calibration_stage(
     variant: str = "base",
     run_root: Path | str = "artifacts",
 ) -> StageResult:
-    distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", False)
+    distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", "single", False)
     run_context = _prepare_run(
         manifest_path,
         index_path,

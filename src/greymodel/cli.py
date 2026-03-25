@@ -21,6 +21,7 @@ from .data import (
 from .evaluation import benchmark_manifest, build_calibration_report
 from .explainability import build_audit_report, build_explanation_bundle
 from .graphing import export_model_graph
+from .pretrain_registry import get_pretrain_dataset_preset, list_pretrain_dataset_presets
 from .runners import (
     run_benchmark_stage,
     run_calibration_stage,
@@ -59,6 +60,7 @@ def _add_training_arguments(parser: argparse.ArgumentParser, include_checkpoint:
     parser.add_argument("--grad-accum-steps", type=int, default=1)
     parser.add_argument("--precision", choices=("auto", "fp32", "fp16", "bf16"), default="auto")
     parser.add_argument("--distributed-backend", default="auto")
+    parser.add_argument("--distributed-strategy", choices=("auto", "fsdp", "ddp"), default="fsdp")
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--log-every-n-steps", type=int, default=10)
     parser.add_argument("--val-every-n-steps", type=int, default=0)
@@ -73,6 +75,18 @@ def _add_training_arguments(parser: argparse.ArgumentParser, include_checkpoint:
     parser.add_argument("--reject-positive-weight", type=float, default=1.0)
     parser.add_argument("--station-balanced-sampling", action="store_true")
     parser.add_argument("--no-station-balanced-sampling", action="store_true")
+    parser.add_argument("--activation-checkpointing", action="store_true")
+    parser.add_argument("--no-activation-checkpointing", action="store_true")
+    parser.add_argument("--memory-report", action="store_true")
+    parser.add_argument("--no-memory-report", action="store_true")
+    parser.add_argument("--pretrain-crop-size", type=int, default=512)
+    parser.add_argument("--pretrain-num-crops", type=int, default=1)
+    parser.add_argument("--pretrain-crop-scales", nargs="+", type=float, default=(0.75, 1.0, 1.25))
+    parser.add_argument("--pretrain-min-valid-fraction", type=float, default=0.2)
+    parser.add_argument("--max-global-feature-grid", type=int, default=16)
+    parser.add_argument("--channels-last", action="store_true")
+    parser.add_argument("--ema-decay", type=float, default=0.0)
+    parser.add_argument("--compile-model", action="store_true")
     if include_checkpoint:
         parser.add_argument("--checkpoint", required=True)
 
@@ -83,6 +97,18 @@ def _training_config_from_args(args: argparse.Namespace) -> TrainingConfig:
         station_balanced_sampling = False
     elif getattr(args, "station_balanced_sampling", False):
         station_balanced_sampling = True
+    activation_checkpointing = True
+    if getattr(args, "no_activation_checkpointing", False):
+        activation_checkpointing = False
+    elif getattr(args, "activation_checkpointing", False):
+        activation_checkpointing = True
+
+    memory_report = True
+    if getattr(args, "no_memory_report", False):
+        memory_report = False
+    elif getattr(args, "memory_report", False):
+        memory_report = True
+
     return TrainingConfig(
         defect_positive_weight=args.defect_positive_weight,
         reject_positive_weight=args.reject_positive_weight,
@@ -102,6 +128,9 @@ def _training_config_from_args(args: argparse.Namespace) -> TrainingConfig:
         grad_accum_steps=args.grad_accum_steps,
         precision=args.precision,
         distributed_backend=args.distributed_backend,
+        distributed_strategy=args.distributed_strategy,
+        activation_checkpointing=activation_checkpointing,
+        memory_report=memory_report,
         seed=args.seed,
         log_every_n_steps=args.log_every_n_steps,
         val_every_n_steps=args.val_every_n_steps,
@@ -110,6 +139,14 @@ def _training_config_from_args(args: argparse.Namespace) -> TrainingConfig:
         resume_from=args.resume_from,
         station_balanced_sampling=station_balanced_sampling,
         show_progress=not bool(getattr(args, "no_progress", False)),
+        pretrain_crop_size=args.pretrain_crop_size,
+        pretrain_num_crops=args.pretrain_num_crops,
+        pretrain_crop_scales=tuple(args.pretrain_crop_scales),
+        pretrain_min_valid_fraction=args.pretrain_min_valid_fraction,
+        max_global_feature_grid=args.max_global_feature_grid,
+        channels_last=bool(args.channels_last),
+        ema_decay=args.ema_decay,
+        compile_model=bool(args.compile_model),
     )
 
 
@@ -130,7 +167,8 @@ def build_parser() -> argparse.ArgumentParser:
         "build-hf",
         help="Materialize a public Hugging Face image dataset into a local grayscale manifest bundle.",
     )
-    dataset_build_hf.add_argument("--dataset-name", required=True)
+    dataset_build_hf.add_argument("--dataset-name", default=None)
+    dataset_build_hf.add_argument("--dataset-preset", choices=tuple(sorted(list_pretrain_dataset_presets().keys())), default=None)
     dataset_build_hf.add_argument("--output-dir", required=True)
     dataset_build_hf.add_argument("--config-name", default=None)
     dataset_build_hf.add_argument("--data-dir", default=None)
@@ -253,17 +291,27 @@ def _cmd_dataset_build(args: argparse.Namespace):
 
 
 def _cmd_dataset_build_hf(args: argparse.Namespace):
+    preset = get_pretrain_dataset_preset(args.dataset_preset) if args.dataset_preset else None
+    if preset is None and not args.dataset_name:
+        raise ValueError("dataset build-hf requires --dataset-name or --dataset-preset.")
+    allow_rgb_conversion = bool(args.allow_rgb_conversion)
+    if preset is not None:
+        allow_rgb_conversion = allow_rgb_conversion or bool(preset.allow_rgb_conversion)
     return build_huggingface_dataset_manifest(
-        dataset_name=args.dataset_name,
+        dataset_name=preset.dataset_name if preset is not None else args.dataset_name,
         output_dir=args.output_dir,
-        config_name=args.config_name,
+        config_name=preset.config_name if preset is not None and args.config_name is None else args.config_name,
         split_names=args.splits,
-        data_dir=args.data_dir,
+        data_dir=preset.data_dir if preset is not None and args.data_dir is None else args.data_dir,
         image_column=args.image_column,
         station_id=args.station_id,
         product_family=args.product_family,
         geometry_mode=args.geometry_mode,
-        source_dataset=args.source_dataset,
+        source_dataset=(
+            preset.source_dataset
+            if preset is not None and args.source_dataset is None
+            else args.source_dataset
+        ),
         cache_dir=args.cache_dir,
         max_records=args.max_records,
         accept_reject_column=args.accept_reject_column,
@@ -272,7 +320,7 @@ def _cmd_dataset_build_hf(args: argparse.Namespace):
         product_family_column=args.product_family_column,
         geometry_mode_column=args.geometry_mode_column,
         metadata_columns=tuple(args.metadata_columns or ()),
-        strict_grayscale=not bool(args.allow_rgb_conversion),
+        strict_grayscale=not allow_rgb_conversion,
         token=args.token,
         local_files_only=bool(args.local_files_only),
         max_retries=args.max_retries,
