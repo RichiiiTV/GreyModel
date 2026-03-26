@@ -211,6 +211,16 @@ class DatasetIndex:
 
 
 @dataclass(frozen=True)
+class PredictionEvidence:
+    heatmap_path: Optional[str] = None
+    top_tiles_path: Optional[str] = None
+    sample_dir: Optional[str] = None
+    explanation_bundle_path: Optional[str] = None
+    station_decision: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class PredictionRecord:
     sample_id: str
     station_id: Any
@@ -218,8 +228,124 @@ class PredictionRecord:
     reject_score: float
     predicted_label: int
     defect_probs: Mapping[str, float] = field(default_factory=dict)
+    primary_label: str = ""
+    primary_score: Optional[float] = None
+    top_defect_family: Optional[str] = None
+    defect_family_probs: Mapping[str, float] = field(default_factory=dict)
+    evidence: PredictionEvidence = field(default_factory=PredictionEvidence)
     split: str = "unspecified"
     defect_scale: str = "unknown"
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.accept_reject not in (0, 1):
+            raise ValueError("PredictionRecord.accept_reject must be 0 or 1.")
+        if self.predicted_label not in (0, 1):
+            raise ValueError("PredictionRecord.predicted_label must be 0 or 1.")
+        probs = dict(self.defect_family_probs or self.defect_probs or {})
+        probs = {str(key): float(value) for key, value in probs.items()}
+        object.__setattr__(self, "defect_probs", probs)
+        object.__setattr__(self, "defect_family_probs", probs)
+        if self.primary_score is None:
+            object.__setattr__(self, "primary_score", float(self.reject_score))
+        if not self.primary_label:
+            object.__setattr__(self, "primary_label", "bad" if int(self.predicted_label) == 1 else "good")
+        if self.primary_label not in {"good", "bad"}:
+            raise ValueError("PredictionRecord.primary_label must be 'good' or 'bad'.")
+        if self.top_defect_family is None and probs:
+            object.__setattr__(self, "top_defect_family", max(probs.items(), key=lambda item: item[1])[0])
+        if isinstance(self.evidence, Mapping):
+            object.__setattr__(self, "evidence", PredictionEvidence(**self.evidence))
+
+
+@dataclass(frozen=True)
+class HierarchicalPredictionRecord:
+    sample_id: str
+    station_id: Any
+    accept_reject: int
+    primary_label: str
+    primary_score: float
+    predicted_label: int
+    reject_score: float
+    top_defect_family: Optional[str] = None
+    defect_family_probs: Mapping[str, float] = field(default_factory=dict)
+    split: str = "unspecified"
+    defect_scale: str = "unknown"
+    evidence: PredictionEvidence = field(default_factory=PredictionEvidence)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.primary_label not in {"good", "bad"}:
+            raise ValueError("HierarchicalPredictionRecord.primary_label must be 'good' or 'bad'.")
+        if self.predicted_label not in (0, 1):
+            raise ValueError("HierarchicalPredictionRecord.predicted_label must be 0 or 1.")
+        if isinstance(self.evidence, Mapping):
+            object.__setattr__(self, "evidence", PredictionEvidence(**self.evidence))
+
+
+@dataclass(frozen=True)
+class FailureRecord:
+    failure_id: str
+    stage: str
+    variant: str
+    status: str
+    error_type: str
+    error_message: str
+    run_dir: str
+    failure_dir: str
+    traceback_path: str
+    timestamp: str
+    manifest_path: Optional[str] = None
+    index_path: Optional[str] = None
+    latest_checkpoint_path: Optional[str] = None
+    best_checkpoint_path: Optional[str] = None
+    epoch: int = 0
+    global_step: int = 0
+    offending_sample_ids: Tuple[str, ...] = ()
+    partial_artifacts: Mapping[str, Any] = field(default_factory=dict)
+    resume_metadata: Mapping[str, Any] = field(default_factory=dict)
+    config_snapshot_path: Optional[str] = None
+    metrics_path: Optional[str] = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.offending_sample_ids, list):
+            object.__setattr__(self, "offending_sample_ids", tuple(str(value) for value in self.offending_sample_ids))
+
+    def __post_init__(self) -> None:
+        if isinstance(self.offending_sample_ids, list):
+            object.__setattr__(self, "offending_sample_ids", tuple(self.offending_sample_ids))
+
+    def __post_init__(self) -> None:
+        if isinstance(self.offending_sample_ids, list):
+            object.__setattr__(self, "offending_sample_ids", tuple(str(value) for value in self.offending_sample_ids))
+
+
+@dataclass(frozen=True)
+class RunStatusRecord:
+    run_dir: str
+    stage: str
+    variant: str
+    status: str
+    run_root: Optional[str] = None
+    session_id: Optional[str] = None
+    manifest_path: Optional[str] = None
+    index_path: Optional[str] = None
+    started_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    failed_at: Optional[str] = None
+    latest_checkpoint_path: Optional[str] = None
+    best_checkpoint_path: Optional[str] = None
+    latest_usable_checkpoint_path: Optional[str] = None
+    report_path: Optional[str] = None
+    summary_path: Optional[str] = None
+    metrics_path: Optional[str] = None
+    epoch: int = 0
+    global_step: int = 0
+    model_version: Optional[str] = None
+    distributed_strategy: Optional[str] = None
+    extra_paths: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 

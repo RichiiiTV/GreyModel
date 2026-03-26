@@ -33,13 +33,17 @@ xai = [
   "captum>=0.7",
   "Pillow>=9.0"
 ]
+ui = [
+  "streamlit>=1.32"
+]
 framework = [
   "torch>=2.0",
   "pytest>=7.0",
   "tqdm>=4.66",
   "datasets>=2.18",
   "captum>=0.7",
-  "Pillow>=9.0"
+  "Pillow>=9.0",
+  "streamlit>=1.32"
 ]
 
 [tool.setuptools]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 
@@ -10,6 +10,7 @@ from .data import load_dataset_index, load_dataset_manifest, load_station_config
 from .preprocessing import preprocess_image, stack_prepared_images
 from .types import ModelInput, StationConfig, TensorBatch, station_id_to_int
 from .utils import ensure_dir, save_array_artifact, write_json
+from .version import __version__
 
 
 def _torch_backend_from_model(model):
@@ -47,13 +48,25 @@ def _captum_integrated_gradients(torch_model, batch: TensorBatch, steps: int = 1
         return _manual_integrated_gradients(torch_model, batch, steps=steps), "manual_integrated_gradients"
 
     station_ids = batch.station_id % max(torch_model.config.num_stations, 1)
+    geometry_ids = batch.geometry_id
+
+    def _expand_batch_dim(tensor, batch_size: int):
+        if tensor.shape[0] == batch_size:
+            return tensor
+        if tensor.shape[0] == 1:
+            return tensor.expand(batch_size, *tensor.shape[1:])
+        repeats = [1] * tensor.ndim
+        repeats[0] = int(np.ceil(float(batch_size) / float(tensor.shape[0])))
+        expanded = tensor.repeat(*repeats)
+        return expanded[:batch_size]
 
     def _forward(image_tensor):
+        batch_size = int(image_tensor.shape[0])
         working_batch = TensorBatch(
             image=image_tensor,
-            valid_mask=batch.valid_mask,
-            station_id=station_ids,
-            geometry_id=batch.geometry_id,
+            valid_mask=_expand_batch_dim(batch.valid_mask, batch_size),
+            station_id=_expand_batch_dim(station_ids, batch_size),
+            geometry_id=_expand_batch_dim(geometry_ids, batch_size),
             metadata=batch.metadata,
         )
         return torch_model(working_batch).accept_reject_logit
@@ -114,12 +127,14 @@ def build_explanation_bundle(
     prediction_path = write_json(
         output_dir / "prediction.json",
         {
+            "primary_label": "bad" if float(np.asarray(output.reject_score).reshape(())) >= float(decision.reject_threshold) else "good",
             "reject_score": float(np.asarray(output.reject_score).reshape(())),
             "accept_reject_logit": float(np.asarray(output.accept_reject_logit).reshape(())),
             "defect_family_probs": np.asarray(output.defect_family_probs, dtype=np.float32).reshape(-1).tolist(),
             "top_tiles": top_tiles.tolist(),
             "station_decision": {"reject": bool(decision.reject), "threshold": float(decision.reject_threshold)},
             "attribution_method": attribution_method,
+            "model_version": __version__,
         },
     )
     bundle_path = write_json(
@@ -148,25 +163,46 @@ def build_explanation_bundle(
     }
 
 
-def build_audit_report(model_factory, manifest_path: Path | str, output_dir: Path | str, limit: int = 5) -> Path:
+def build_audit_report(
+    model_factory,
+    manifest_path: Path | str,
+    output_dir: Path | str,
+    limit: int = 5,
+    failure_dir: Optional[Path | str] = None,
+    continue_on_error: bool = True,
+) -> Path:
     from .utils import load_uint8_grayscale
 
     output_dir = ensure_dir(Path(output_dir))
+    failure_root = ensure_dir(Path(failure_dir)) if failure_dir is not None else ensure_dir(output_dir / "failures")
     records = load_dataset_manifest(manifest_path)[:limit]
     index = load_dataset_index(Path(manifest_path).with_name("dataset_index.json"))
     station_configs = load_station_configs_from_index(index)
     model = model_factory()
     bundles = []
+    failures = []
     for record in records:
-        image = load_uint8_grayscale(Path(record.image_path))
-        model_input = ModelInput(
-            image_uint8=image,
-            station_id=record.station_id,
-            geometry_mode=record.geometry_mode,
-            metadata=record.capture_metadata,
-        )
-        station_config = station_config_for_record(record, station_configs)
-        sample_dir = ensure_dir(output_dir / record.sample_id.replace("/", "_"))
-        bundle = build_explanation_bundle(model, model_input, station_config, sample_dir)
-        bundles.append({"sample_id": record.sample_id, **{key: str(value) for key, value in bundle.items()}})
-    return write_json(output_dir / "audit_report.json", {"bundles": bundles})
+        try:
+            image = load_uint8_grayscale(Path(record.image_path))
+            model_input = ModelInput(
+                image_uint8=image,
+                station_id=record.station_id,
+                geometry_mode=record.geometry_mode,
+                metadata=record.capture_metadata,
+            )
+            station_config = station_config_for_record(record, station_configs)
+            sample_dir = ensure_dir(output_dir / record.sample_id.replace("/", "_"))
+            bundle = build_explanation_bundle(model, model_input, station_config, sample_dir)
+            bundles.append({"sample_id": record.sample_id, **{key: str(value) for key, value in bundle.items()}})
+        except Exception as exc:
+            failure_payload = {
+                "sample_id": record.sample_id,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "image_path": record.image_path,
+            }
+            failure_path = write_json(failure_root / ("%s.json" % record.sample_id.replace("/", "_")), failure_payload)
+            failures.append({"sample_id": record.sample_id, "failure_path": str(failure_path), **failure_payload})
+            if not continue_on_error:
+                raise
+    return write_json(output_dir / "audit_report.json", {"bundles": bundles, "failures": failures, "model_version": __version__})

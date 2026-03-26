@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict
+import json
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from .api import BaseModel, LiteModel
 from .data import (
@@ -12,27 +12,29 @@ from .data import (
     build_huggingface_dataset_manifest,
     build_hard_negative_subset,
     load_dataset_index,
-    load_dataset_manifest,
-    load_station_configs_from_index,
     register_synthetic_recipe,
-    station_config_for_record,
     validate_dataset_manifest,
 )
 from .evaluation import benchmark_manifest, build_calibration_report
-from .explainability import build_audit_report, build_explanation_bundle
 from .graphing import export_model_graph
+from .prediction import run_batch_prediction_stage
 from .pretrain_registry import get_pretrain_dataset_preset, list_pretrain_dataset_presets
+from .recovery import ensure_failure_bundle
+from .registry import compare_run_reports
 from .runners import (
     run_benchmark_stage,
     run_calibration_stage,
     run_domain_adaptation_stage,
+    run_explain_audit_stage,
+    run_explain_sample_stage,
     run_finetune_stage,
+    run_prediction_stage,
     run_pretraining_stage,
     run_resume_stage,
 )
 from .training import TrainingConfig
-from .types import ModelInput
-from .utils import ensure_dir, load_uint8_grayscale, write_json
+from .ui import launch_streamlit_ui
+from .utils import read_json, write_json
 
 
 def _variant_model(variant: str, num_defect_families: int):
@@ -102,13 +104,11 @@ def _training_config_from_args(args: argparse.Namespace) -> TrainingConfig:
         activation_checkpointing = False
     elif getattr(args, "activation_checkpointing", False):
         activation_checkpointing = True
-
     memory_report = True
     if getattr(args, "no_memory_report", False):
         memory_report = False
     elif getattr(args, "memory_report", False):
         memory_report = True
-
     return TrainingConfig(
         defect_positive_weight=args.defect_positive_weight,
         reject_positive_weight=args.reject_positive_weight,
@@ -217,6 +217,11 @@ def build_parser() -> argparse.ArgumentParser:
     dataset_recipe.add_argument("--payload-json", default="{}")
     dataset_recipe.set_defaults(func=_cmd_dataset_register_recipe)
 
+    dataset_ontology = dataset_sub.add_parser("ontology", help="Inspect the resolved ontology for a manifest or dataset index.")
+    dataset_ontology.add_argument("--manifest", default=None)
+    dataset_ontology.add_argument("--index", default=None)
+    dataset_ontology.set_defaults(func=_cmd_dataset_ontology)
+
     train = subparsers.add_parser("train", help="Staged training and calibration.")
     train_sub = train.add_subparsers(dest="train_command", required=True)
     for name, handler in (
@@ -253,6 +258,12 @@ def build_parser() -> argparse.ArgumentParser:
     eval_calibration.add_argument("--output-path", default=None)
     eval_calibration.set_defaults(func=_cmd_eval_calibration)
 
+    eval_compare = eval_sub.add_parser("compare")
+    eval_compare.add_argument("--left-report", required=True)
+    eval_compare.add_argument("--right-report", required=True)
+    eval_compare.add_argument("--output-path", default=None)
+    eval_compare.set_defaults(func=_cmd_eval_compare)
+
     explain = subparsers.add_parser("explain", help="Architecture graph and sample audit bundles.")
     explain_sub = explain.add_subparsers(dest="explain_command", required=True)
 
@@ -269,15 +280,49 @@ def build_parser() -> argparse.ArgumentParser:
     explain_sample.add_argument("--index", default=None)
     explain_sample.add_argument("--sample-id", default=None)
     explain_sample.add_argument("--variant", choices=("base", "lite"), default="base")
-    explain_sample.add_argument("--output-dir", default=str(Path("artifacts") / "sample_explanations"))
+    explain_sample.add_argument("--output-dir", default=str(Path("artifacts") / "sample_bundle"))
     explain_sample.set_defaults(func=_cmd_explain_sample)
 
     explain_audit = explain_sub.add_parser("audit")
     explain_audit.add_argument("--manifest", required=True)
+    explain_audit.add_argument("--index", default=None)
     explain_audit.add_argument("--variant", choices=("base", "lite"), default="base")
     explain_audit.add_argument("--output-dir", default=str(Path("artifacts") / "audit"))
     explain_audit.add_argument("--limit", type=int, default=5)
     explain_audit.set_defaults(func=_cmd_explain_audit)
+
+    predict = subparsers.add_parser("predict", help="Batch hierarchical prediction over a manifest or image folder.")
+    predict_inputs = predict.add_mutually_exclusive_group(required=True)
+    predict_inputs.add_argument("--manifest", default=None)
+    predict_inputs.add_argument("--input-dir", default=None)
+    predict.add_argument("--index", default=None)
+    predict.add_argument("--station-config", default=None)
+    predict.add_argument("--variant", choices=("base", "lite"), default="base")
+    predict.add_argument("--run-root", default="artifacts")
+    predict.add_argument("--evidence-policy", choices=("none", "bad", "all"), default="bad")
+    predict.add_argument("--station-id", default="station-predict")
+    predict.add_argument("--product-family", default="unknown")
+    predict.add_argument("--geometry-mode", choices=("auto", "rect", "square"), default="auto")
+    predict.add_argument("--defect-family", action="append", dest="defect_families", default=None)
+    predict.set_defaults(func=_cmd_predict)
+
+    ui = subparsers.add_parser("ui", help="Launch the local Streamlit framework UI.")
+    ui.add_argument("--run-root", default="artifacts")
+    ui.add_argument("--data-root", default="data")
+    ui.add_argument("--dataset-root", dest="data_root")
+    ui.add_argument("--host", default="127.0.0.1")
+    ui.add_argument("--port", type=int, default=8501)
+    ui.add_argument("--browser", action="store_true")
+    ui.add_argument("--default-execution-backend", choices=("local", "slurm"), default="local")
+    ui.add_argument("--slurm-cpus", type=int, default=8)
+    ui.add_argument("--slurm-mem", default="50G")
+    ui.add_argument("--slurm-gres", default="gpu:8")
+    ui.add_argument("--slurm-partition", default="")
+    ui.add_argument("--slurm-queue", default="")
+    ui.add_argument("--slurm-nproc-per-node", type=int, default=8)
+    ui.add_argument("--slurm-python", default=None)
+    ui.add_argument("--dry-run", action="store_true")
+    ui.set_defaults(func=_cmd_ui)
     return parser
 
 
@@ -307,11 +352,7 @@ def _cmd_dataset_build_hf(args: argparse.Namespace):
         station_id=args.station_id,
         product_family=args.product_family,
         geometry_mode=args.geometry_mode,
-        source_dataset=(
-            preset.source_dataset
-            if preset is not None and args.source_dataset is None
-            else args.source_dataset
-        ),
+        source_dataset=(preset.source_dataset if preset is not None and args.source_dataset is None else args.source_dataset),
         cache_dir=args.cache_dir,
         max_records=args.max_records,
         accept_reject_column=args.accept_reject_column,
@@ -347,10 +388,21 @@ def _cmd_dataset_hard_negatives(args: argparse.Namespace):
 
 
 def _cmd_dataset_register_recipe(args: argparse.Namespace):
-    import json
-
     payload = json.loads(args.payload_json)
     return register_synthetic_recipe(args.index, args.recipe_name, payload)
+
+
+def _cmd_dataset_ontology(args: argparse.Namespace):
+    if args.index:
+        index = load_dataset_index(args.index)
+    elif args.manifest:
+        candidate = Path(args.manifest).with_name("dataset_index.json")
+        if not candidate.exists():
+            raise ValueError("No dataset_index.json was found next to %s." % args.manifest)
+        index = load_dataset_index(candidate)
+    else:
+        raise ValueError("dataset ontology requires --manifest or --index.")
+    return read_json(Path(index.ontology_path))
 
 
 def _cmd_train_pretrain(args: argparse.Namespace):
@@ -442,6 +494,13 @@ def _cmd_eval_calibration(args: argparse.Namespace):
     )
 
 
+def _cmd_eval_compare(args: argparse.Namespace):
+    payload = compare_run_reports(args.left_report, args.right_report)
+    if args.output_path:
+        write_json(Path(args.output_path), payload)
+    return payload
+
+
 def _cmd_explain_graph(args: argparse.Namespace):
     model = _variant_model(args.variant, num_defect_families=args.num_defect_families)
     backend_model = getattr(model.backend, "model", None)
@@ -451,39 +510,149 @@ def _cmd_explain_graph(args: argparse.Namespace):
 
 
 def _cmd_explain_sample(args: argparse.Namespace):
-    import json
-
-    records = load_dataset_manifest(args.manifest)
-    if not records:
-        raise ValueError("The manifest is empty.")
-    record = next((row for row in records if row.sample_id == args.sample_id), records[0])
-    index_path = args.index or str(Path(args.manifest).with_name("dataset_index.json"))
-    index = load_dataset_index(index_path)
-    station_configs = load_station_configs_from_index(index)
-    ontology_path = Path(index.ontology_path)
-    defect_count = 4
-    if ontology_path.exists():
-        defect_count = max(len(json.loads(ontology_path.read_text(encoding="utf-8")).get("defect_tags", ())), 1)
-    image = load_uint8_grayscale(Path(record.image_path))
-    model_input = ModelInput(
-        image_uint8=image,
-        station_id=record.station_id,
-        geometry_mode=record.geometry_mode,
-        metadata=record.capture_metadata,
+    result = run_explain_sample_stage(
+        manifest_path=args.manifest,
+        index_path=args.index,
+        sample_id=args.sample_id,
+        variant=args.variant,
+        run_root=args.output_dir,
     )
-    station_config = station_config_for_record(record, station_configs)
-    model = _variant_model(args.variant, num_defect_families=defect_count)
-    sample_dir = ensure_dir(Path(args.output_dir) / record.sample_id.replace("/", "_"))
-    return build_explanation_bundle(model, model_input, station_config, sample_dir)
+    payload = {"report_path": str(result.report_path), "run_dir": str(result.run_dir)}
+    payload.update(dict(result.extra_paths or {}))
+    return payload
 
 
 def _cmd_explain_audit(args: argparse.Namespace):
-    model_factory = lambda: _variant_model(args.variant, num_defect_families=4)
-    return build_audit_report(model_factory, args.manifest, args.output_dir, limit=args.limit)
+    result = run_explain_audit_stage(
+        manifest_path=args.manifest,
+        index_path=args.index,
+        variant=args.variant,
+        run_root=args.output_dir,
+        limit=args.limit,
+    )
+    return {"report_path": str(result.report_path), "run_dir": str(result.run_dir)}
+
+
+def _cmd_predict(args: argparse.Namespace):
+    if args.input_dir:
+        result = run_batch_prediction_stage(
+            input_dir=args.input_dir,
+            index_path=args.index,
+            station_config_path=args.station_config,
+            variant=args.variant,
+            run_root=args.run_root,
+            station_id=args.station_id,
+            product_family=args.product_family,
+            geometry_mode=args.geometry_mode,
+            defect_families=tuple(args.defect_families or ()),
+            evidence_policy=args.evidence_policy,
+        )
+    else:
+        result = run_prediction_stage(
+            manifest_path=args.manifest,
+            index_path=args.index,
+            variant=args.variant,
+            run_root=args.run_root,
+            evidence_policy=args.evidence_policy,
+        )
+    payload = {"run_dir": str(result.run_dir)}
+    if result.report_path is not None:
+        payload["report_path"] = str(result.report_path)
+    payload.update(dict(result.extra_paths or {}))
+    return payload
+
+
+def _cmd_ui(args: argparse.Namespace):
+    return launch_streamlit_ui(
+        run_root=args.run_root,
+        data_root=args.data_root,
+        host=args.host,
+        port=args.port,
+        headless=not bool(args.browser),
+        dry_run=bool(args.dry_run),
+        default_execution_backend=args.default_execution_backend,
+        slurm_cpus=args.slurm_cpus,
+        slurm_mem=args.slurm_mem,
+        slurm_gres=args.slurm_gres,
+        slurm_partition=args.slurm_partition,
+        slurm_queue=args.slurm_queue,
+        slurm_nproc_per_node=args.slurm_nproc_per_node,
+        slurm_python=args.slurm_python,
+    )
+
+
+def _failure_context_from_args(args: argparse.Namespace) -> Mapping[str, object] | None:
+    command = getattr(args, "command", None)
+    if command is None:
+        return None
+    if command == "train":
+        return {
+            "run_root": getattr(args, "run_root", "artifacts"),
+            "stage": str(getattr(args, "train_command", "train")).replace("-", "_"),
+            "variant": getattr(args, "variant", "base"),
+            "manifest_path": getattr(args, "manifest", None),
+            "index_path": getattr(args, "index", None),
+        }
+    if command == "eval":
+        return {
+            "run_root": "artifacts",
+            "stage": "eval_%s" % str(getattr(args, "eval_command", "eval")).replace("-", "_"),
+            "variant": getattr(args, "variant", "base"),
+            "manifest_path": getattr(args, "manifest", None),
+            "index_path": getattr(args, "index", None),
+        }
+    if command == "explain":
+        return {
+            "run_root": getattr(args, "output_dir", "artifacts"),
+            "stage": "explain_%s" % str(getattr(args, "explain_command", "explain")).replace("-", "_"),
+            "variant": getattr(args, "variant", "base"),
+            "manifest_path": getattr(args, "manifest", None),
+            "index_path": getattr(args, "index", None),
+        }
+    if command == "predict":
+        return {
+            "run_root": getattr(args, "run_root", "artifacts"),
+            "stage": "predict",
+            "variant": getattr(args, "variant", "base"),
+            "manifest_path": getattr(args, "manifest", None),
+            "index_path": getattr(args, "index", None),
+        }
+    if command == "ui":
+        return {
+            "run_root": getattr(args, "run_root", "artifacts"),
+            "stage": "ui",
+            "variant": "local",
+            "manifest_path": None,
+            "index_path": None,
+        }
+    return {
+        "run_root": "artifacts",
+        "stage": "%s_%s" % (command, getattr(args, "%s_command" % command, command)),
+        "variant": "local",
+        "manifest_path": getattr(args, "manifest", None),
+        "index_path": getattr(args, "index", None),
+    }
 
 
 def cli_main(argv: Sequence[str] | None = None):
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
-    result = args.func(args)
-    return result
+    try:
+        return args.func(args)
+    except BaseException as exc:
+        if not getattr(exc, "_greymodel_failure_written", False):
+            failure_context = _failure_context_from_args(args)
+            if failure_context is not None:
+                try:
+                    ensure_failure_bundle(
+                        run_root=failure_context["run_root"],
+                        stage=str(failure_context["stage"]),
+                        variant=str(failure_context["variant"]),
+                        exc=exc,
+                        manifest_path=failure_context.get("manifest_path"),
+                        index_path=failure_context.get("index_path"),
+                        metadata={"command": getattr(args, "command", "unknown")},
+                    )
+                except Exception:
+                    pass
+        raise

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from functools import partial
@@ -8,14 +8,26 @@ from pathlib import Path
 import time
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
+from .api import BaseModel, LiteModel
 from .data import (
     DistributedShardedSampler,
     ManifestInspectionDataset,
     StationBalancedManifestSampler,
     load_dataset_index,
     load_dataset_manifest,
+    load_station_configs_from_index,
+    station_config_for_record,
 )
-from .evaluation import build_calibration_report, evaluate_predictions, predict_dataset, save_predictions
+from .evaluation import (
+    benchmark_manifest,
+    build_calibration_report,
+    evaluate_predictions,
+    predict_dataset,
+    predict_hierarchical_dataset,
+    save_predictions,
+)
+from .explainability import build_audit_report, build_explanation_bundle
+from .recovery import write_failure_bundle
 from .models import build_base_model, build_lite_model
 from .tracking import (
     RunContext,
@@ -25,6 +37,7 @@ from .tracking import (
     log_step_metrics,
     snapshot_manifest,
     snapshot_run_config,
+    update_run_status,
     write_summary,
 )
 from .training import (
@@ -40,8 +53,9 @@ from .training import (
     sample_pretrain_crops,
     seed_everything,
 )
-from .types import TensorBatch
-from .utils import write_json
+from .types import ModelInput, TensorBatch
+from .utils import ensure_dir, load_uint8_grayscale, write_json
+from .version import __version__
 
 
 def _require_torch():
@@ -118,6 +132,13 @@ class StageResult:
 
 def _builder_for_variant(variant: str):
     return build_lite_model if variant == "lite" else build_base_model
+
+
+def _inference_model_for_variant(variant: str, defect_families: Sequence[str]):
+    num_defect_families = max(len(defect_families), 1)
+    if variant == "lite":
+        return LiteModel(num_defect_families=num_defect_families, defect_families=defect_families)
+    return BaseModel(num_defect_families=num_defect_families, defect_families=defect_families)
 
 
 def _require_fsdp():
@@ -237,6 +258,17 @@ def _prepare_run(
                 "world_size": context.world_size,
                 "backend": context.backend,
                 "strategy": context.strategy,
+            },
+        )
+        update_run_status(
+            run_context,
+            {
+                "stage": stage,
+                "variant": variant,
+                "status": "running",
+                "manifest_path": str(Path(manifest_path)),
+                "index_path": str(index_path) if index_path is not None else None,
+                "distributed_strategy": context.strategy,
             },
         )
     _maybe_barrier(context)
@@ -533,6 +565,7 @@ def _checkpoint_payload(
     return {
         "stage": stage,
         "variant": variant,
+        "model_version": __version__,
         "epoch": int(epoch),
         "global_step": int(global_step),
         "best_val_metric": best_val_metric,
@@ -634,6 +667,16 @@ def _save_checkpoint(
         torch.save(dict(payload), context.best_checkpoint_path)
     if periodic_prefix is not None:
         _prune_periodic_checkpoints(context, periodic_prefix, keep_last_k)
+    update_run_status(
+        context,
+        {
+            "latest_checkpoint_path": str(context.latest_checkpoint_path),
+            "best_checkpoint_path": str(context.best_checkpoint_path) if context.best_checkpoint_path.exists() else None,
+            "latest_usable_checkpoint_path": str(context.latest_checkpoint_path),
+            "epoch": int(payload.get("epoch", 0) or 0),
+            "global_step": int(payload.get("global_step", 0) or 0),
+        },
+    )
     _maybe_barrier(context_dist)
     return checkpoint_path
 
@@ -803,6 +846,13 @@ def _run_training_loop(
 ) -> StageResult:
     distributed_context = _init_distributed(training_config)
     seed_everything(training_config.seed + distributed_context.rank)
+    run_context: Optional[RunContext] = None
+    latest_checkpoint_path: Optional[Path] = None
+    best_checkpoint_path: Optional[Path] = None
+    latest_report_path: Optional[Path] = None
+    global_step = 0
+    best_val_metric: Optional[float] = None
+    last_epoch_completed = 0
     try:
         defect_families = _training_defect_families(index_path or Path(manifest_path).with_name("dataset_index.json"))
         _, _, train_loader, val_loader, train_sampler, _ = _build_runtime_dataloaders(
@@ -869,13 +919,11 @@ def _run_training_loop(
                 "resume_from": str(full_resume_path) if full_resume_path is not None else None,
                 "effective_global_batch_size": training_config.effective_global_batch_size(distributed_context.world_size),
                 "distributed_strategy": distributed_context.strategy,
+                "model_version": __version__,
             },
             distributed_context,
         )
 
-        best_checkpoint_path: Optional[Path] = None
-        latest_checkpoint_path: Optional[Path] = None
-        latest_report_path: Optional[Path] = None
         total_samples_seen = 0
         stage_start_time = time.perf_counter()
 
@@ -1151,6 +1199,7 @@ def _run_training_loop(
                 keep_last_k=training_config.keep_last_k_checkpoints,
             )
             _write_stage_auxiliary_artifacts(stage, run_context, distributed_context, auxiliary_modules)
+            last_epoch_completed = epoch + 1
 
             summary_payload = {
                 "stage": stage,
@@ -1164,6 +1213,7 @@ def _run_training_loop(
                 "world_size": distributed_context.world_size,
                 "samples_per_second": float(total_samples_seen) / max(time.perf_counter() - stage_start_time, 1e-6),
                 "distributed_strategy": distributed_context.strategy,
+                "model_version": __version__,
             }
             if training_config.memory_report:
                 summary_payload.update(_memory_metrics(distributed_context))
@@ -1172,6 +1222,7 @@ def _run_training_loop(
                     summary_payload["rank_memory"] = rank_memory.get("ranks", rank_memory)
             if distributed_context.is_main_process:
                 latest_report_path = write_json(run_context.reports_dir / ("%s_report.json" % stage), {**summary_payload, **reduced_epoch_metrics})
+                summary_payload["report_path"] = str(latest_report_path)
                 write_summary(run_context, {**summary_payload, **reduced_epoch_metrics})
 
         if distributed_context.is_main_process:
@@ -1188,6 +1239,21 @@ def _run_training_loop(
         _maybe_barrier(distributed_context)
         checkpoint_path_out = latest_checkpoint_path or (run_context.latest_checkpoint_path if run_context.latest_checkpoint_path.exists() else None)
         best_path_out = best_checkpoint_path or (run_context.best_checkpoint_path if run_context.best_checkpoint_path.exists() else checkpoint_path_out)
+        if distributed_context.is_main_process:
+            update_run_status(
+                run_context,
+                {
+                    "status": "completed",
+                    "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "epoch": last_epoch_completed,
+                    "global_step": global_step,
+                    "latest_checkpoint_path": str(checkpoint_path_out) if checkpoint_path_out is not None else None,
+                    "best_checkpoint_path": str(best_path_out) if best_path_out is not None else None,
+                    "latest_usable_checkpoint_path": str(best_path_out or checkpoint_path_out) if (best_path_out or checkpoint_path_out) is not None else None,
+                    "report_path": str(latest_report_path) if latest_report_path is not None else None,
+                    "summary_path": str(run_context.summary_path),
+                },
+            )
         return StageResult(
             stage=stage,
             variant=variant,
@@ -1197,13 +1263,47 @@ def _run_training_loop(
             checkpoint_path=checkpoint_path_out,
             best_checkpoint_path=best_path_out,
             latest_checkpoint_path=checkpoint_path_out,
-            epoch=training_config.epochs,
+            epoch=last_epoch_completed,
             global_step=global_step,
             extra_paths={
                 "epoch_metrics_path": str(run_context.epoch_metrics_path),
                 "summary_path": str(run_context.summary_path),
             },
         )
+    except BaseException as exc:
+        if run_context is not None and distributed_context.is_main_process and not getattr(exc, "_greymodel_failure_written", False):
+            latest_candidate = latest_checkpoint_path
+            if latest_candidate is None and run_context.latest_checkpoint_path.exists():
+                latest_candidate = run_context.latest_checkpoint_path
+            best_candidate = best_checkpoint_path
+            if best_candidate is None and run_context.best_checkpoint_path.exists():
+                best_candidate = run_context.best_checkpoint_path
+            write_failure_bundle(
+                run_context,
+                stage=stage,
+                variant=variant,
+                exc=exc,
+                manifest_path=manifest_path,
+                index_path=index_path,
+                latest_checkpoint_path=latest_candidate,
+                best_checkpoint_path=best_candidate,
+                epoch=last_epoch_completed,
+                global_step=global_step,
+                partial_artifacts={
+                    "report_path": str(latest_report_path) if latest_report_path is not None else None,
+                    "summary_path": str(run_context.summary_path),
+                },
+                resume_metadata={
+                    "stage": stage,
+                    "variant": variant,
+                    "latest_usable_checkpoint_path": str(best_candidate or latest_candidate) if (best_candidate or latest_candidate) is not None else None,
+                },
+                config_snapshot_path=run_context.config_snapshot_path,
+                metrics_path=run_context.metrics_path,
+                metadata={"distributed_strategy": distributed_context.strategy},
+            )
+        _maybe_barrier(distributed_context)
+        raise
     finally:
         _cleanup_distributed(distributed_context)
 
@@ -1328,21 +1428,43 @@ def run_benchmark_stage(
         payload={},
         context=distributed_context,
     )
-    report = evaluate_predictions(
-        load_dataset_manifest(manifest_path),
-        predict_dataset(manifest_path, index_path=index_path, variant=variant),
-    )
-    report_path = write_json(run_context.reports_dir / "benchmark_report.json", report)
-    log_metrics(
-        run_context,
-        {
-            "accuracy": report["overall"]["accuracy"],
-            "far": report["overall"]["far"],
-            "frr": report["overall"]["frr"],
-            "auroc": report["overall"].get("auroc"),
-        },
-    )
-    return StageResult("benchmark", variant, run_context.run_dir, run_context.metrics_path, report_path=report_path)
+    try:
+        report = evaluate_predictions(
+            load_dataset_manifest(manifest_path),
+            predict_dataset(manifest_path, index_path=index_path, variant=variant),
+        )
+        report_path = write_json(run_context.reports_dir / "benchmark_report.json", report)
+        log_metrics(
+            run_context,
+            {
+                "accuracy": report["overall"]["accuracy"],
+                "far": report["overall"]["far"],
+                "frr": report["overall"]["frr"],
+                "auroc": report["overall"].get("auroc"),
+            },
+        )
+        update_run_status(
+            run_context,
+            {
+                "status": "completed",
+                "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "report_path": str(report_path),
+                "summary_path": str(report_path),
+            },
+        )
+        return StageResult("benchmark", variant, run_context.run_dir, run_context.metrics_path, report_path=report_path)
+    except BaseException as exc:
+        write_failure_bundle(
+            run_context,
+            stage="benchmark",
+            variant=variant,
+            exc=exc,
+            manifest_path=manifest_path,
+            index_path=index_path,
+            config_snapshot_path=run_context.config_snapshot_path,
+            metrics_path=run_context.metrics_path,
+        )
+        raise
 
 
 def run_calibration_stage(
@@ -1361,26 +1483,274 @@ def run_calibration_stage(
         payload={},
         context=distributed_context,
     )
-    predictions = predict_dataset(manifest_path, index_path=index_path, variant=variant)
-    predictions_path = save_predictions(predictions, run_context.reports_dir / "predictions.jsonl")
-    report = build_calibration_report(
-        manifest_path=manifest_path,
-        predictions_path=predictions_path,
-        index_path=index_path,
-        output_path=run_context.reports_dir / "calibration_report.json",
+    try:
+        predictions = predict_dataset(manifest_path, index_path=index_path, variant=variant)
+        predictions_path = save_predictions(predictions, run_context.reports_dir / "predictions.jsonl")
+        report = build_calibration_report(
+            manifest_path=manifest_path,
+            predictions_path=predictions_path,
+            index_path=index_path,
+            output_path=run_context.reports_dir / "calibration_report.json",
+        )
+        log_metrics(
+            run_context,
+            {
+                "num_records": int(report["num_records"]),
+                "num_stations": int(len(report["stations"])),
+            },
+        )
+        update_run_status(
+            run_context,
+            {
+                "status": "completed",
+                "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "report_path": str(run_context.reports_dir / "calibration_report.json"),
+                "summary_path": str(run_context.reports_dir / "calibration_report.json"),
+            },
+        )
+        return StageResult(
+            "calibrate",
+            variant,
+            run_context.run_dir,
+            run_context.metrics_path,
+            report_path=run_context.reports_dir / "calibration_report.json",
+            extra_paths={"predictions_path": str(predictions_path)},
+        )
+    except BaseException as exc:
+        write_failure_bundle(
+            run_context,
+            stage="calibrate",
+            variant=variant,
+            exc=exc,
+            manifest_path=manifest_path,
+            index_path=index_path,
+            config_snapshot_path=run_context.config_snapshot_path,
+            metrics_path=run_context.metrics_path,
+        )
+        raise
+
+
+def run_prediction_stage(
+    manifest_path: Path | str,
+    index_path: Optional[Path | str] = None,
+    variant: str = "base",
+    run_root: Path | str = "artifacts",
+    evidence_policy: str = "bad",
+) -> StageResult:
+    distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", "single", False)
+    run_context = _prepare_run(
+        manifest_path,
+        index_path,
+        stage="predict",
+        variant=variant,
+        run_root=run_root,
+        payload={"evidence_policy": evidence_policy},
+        context=distributed_context,
     )
-    log_metrics(
-        run_context,
-        {
-            "num_records": int(report["num_records"]),
-            "num_stations": int(len(report["stations"])),
-        },
+    failed_sample_ids: list[str] = []
+
+    def _prediction_error(record, exc: BaseException) -> None:
+        failed_sample_ids.append(record.sample_id)
+        write_failure_bundle(
+            run_context,
+            stage="predict",
+            variant=variant,
+            exc=exc,
+            manifest_path=manifest_path,
+            index_path=index_path,
+            offending_sample_ids=(record.sample_id,),
+            partial_artifacts={"sample_id": record.sample_id, "image_path": record.image_path},
+            resume_metadata={"mode": "batch_predict", "continue_on_error": True},
+            config_snapshot_path=run_context.config_snapshot_path,
+            metrics_path=run_context.metrics_path,
+        )
+
+    try:
+        predictions = predict_hierarchical_dataset(
+            manifest_path,
+            index_path=index_path,
+            variant=variant,
+            evidence_root=run_context.explanations_dir,
+            evidence_policy=evidence_policy,
+            on_error=_prediction_error,
+            continue_on_error=True,
+        )
+        predictions_path = save_predictions(predictions, run_context.predictions_dir / "predictions.jsonl")
+        report = evaluate_predictions(load_dataset_manifest(manifest_path), predictions)
+        report_path = write_json(run_context.reports_dir / "predict_report.json", report)
+        summary_payload = {
+            "stage": "predict",
+            "variant": variant,
+            "num_predictions": len(predictions),
+            "num_failures": len(failed_sample_ids),
+            "report_path": str(report_path),
+            "predictions_path": str(predictions_path),
+        }
+        write_summary(run_context, summary_payload)
+        log_metrics(run_context, summary_payload)
+        update_run_status(
+            run_context,
+            {
+                "status": "completed_with_failures" if failed_sample_ids else "completed",
+                "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "report_path": str(report_path),
+                "summary_path": str(run_context.summary_path),
+                "metrics_path": str(run_context.metrics_path),
+                "metadata": {"failed_sample_ids": failed_sample_ids},
+            },
+        )
+        return StageResult(
+            "predict",
+            variant,
+            run_context.run_dir,
+            run_context.metrics_path,
+            report_path=report_path,
+            extra_paths={
+                "predictions_path": str(predictions_path),
+                "summary_path": str(run_context.summary_path),
+            },
+        )
+    except BaseException as exc:
+        write_failure_bundle(
+            run_context,
+            stage="predict",
+            variant=variant,
+            exc=exc,
+            manifest_path=manifest_path,
+            index_path=index_path,
+            offending_sample_ids=tuple(failed_sample_ids),
+            config_snapshot_path=run_context.config_snapshot_path,
+            metrics_path=run_context.metrics_path,
+        )
+        raise
+
+
+def run_explain_sample_stage(
+    manifest_path: Path | str,
+    index_path: Optional[Path | str] = None,
+    sample_id: Optional[str] = None,
+    variant: str = "base",
+    run_root: Path | str = "artifacts",
+) -> StageResult:
+    distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", "single", False)
+    run_context = _prepare_run(
+        manifest_path,
+        index_path,
+        stage="explain_sample",
+        variant=variant,
+        run_root=run_root,
+        payload={"sample_id": sample_id},
+        context=distributed_context,
     )
-    return StageResult(
-        "calibrate",
-        variant,
-        run_context.run_dir,
-        run_context.metrics_path,
-        report_path=run_context.reports_dir / "calibration_report.json",
-        extra_paths={"predictions_path": str(predictions_path)},
+    try:
+        records = load_dataset_manifest(manifest_path)
+        if not records:
+            raise ValueError("The manifest is empty.")
+        record = next((row for row in records if row.sample_id == sample_id), records[0])
+        resolved_index = index_path or str(Path(manifest_path).with_name("dataset_index.json"))
+        index = load_dataset_index(resolved_index)
+        station_configs = load_station_configs_from_index(index)
+        image = load_uint8_grayscale(Path(record.image_path))
+        model_input = ModelInput(
+            image_uint8=image,
+            station_id=record.station_id,
+            geometry_mode=record.geometry_mode,
+            metadata=record.capture_metadata,
+        )
+        station_config = station_config_for_record(record, station_configs)
+        defect_families = _load_defect_families(resolved_index)
+        model = _inference_model_for_variant(variant, defect_families)
+        sample_dir = ensure_dir(run_context.explanations_dir / record.sample_id.replace("/", "_"))
+        bundle = build_explanation_bundle(model, model_input, station_config, sample_dir)
+        report_path = write_json(
+            run_context.reports_dir / "explain_sample_report.json",
+            {
+                "sample_id": record.sample_id,
+                "bundle": {key: str(value) for key, value in bundle.items()},
+            },
+        )
+        write_summary(run_context, {"stage": "explain_sample", "variant": variant, "report_path": str(report_path)})
+        update_run_status(
+            run_context,
+            {
+                "status": "completed",
+                "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "report_path": str(report_path),
+                "summary_path": str(run_context.summary_path),
+            },
+        )
+        return StageResult(
+            "explain_sample",
+            variant,
+            run_context.run_dir,
+            run_context.metrics_path,
+            report_path=report_path,
+            extra_paths={key: str(value) for key, value in bundle.items()},
+        )
+    except BaseException as exc:
+        write_failure_bundle(
+            run_context,
+            stage="explain_sample",
+            variant=variant,
+            exc=exc,
+            manifest_path=manifest_path,
+            index_path=index_path,
+            offending_sample_ids=(sample_id,) if sample_id is not None else (),
+            config_snapshot_path=run_context.config_snapshot_path,
+            metrics_path=run_context.metrics_path,
+        )
+        raise
+
+
+def run_explain_audit_stage(
+    manifest_path: Path | str,
+    index_path: Optional[Path | str] = None,
+    variant: str = "base",
+    run_root: Path | str = "artifacts",
+    limit: int = 5,
+) -> StageResult:
+    distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", "single", False)
+    run_context = _prepare_run(
+        manifest_path,
+        index_path,
+        stage="explain_audit",
+        variant=variant,
+        run_root=run_root,
+        payload={"limit": int(limit)},
+        context=distributed_context,
     )
+    try:
+        defect_families = _load_defect_families(index_path or Path(manifest_path).with_name("dataset_index.json"))
+        model_factory = lambda: _inference_model_for_variant(variant, defect_families)
+        report_path = build_audit_report(
+            model_factory,
+            manifest_path,
+            run_context.explanations_dir,
+            limit=limit,
+            failure_dir=run_context.failures_dir,
+            continue_on_error=True,
+        )
+        write_summary(run_context, {"stage": "explain_audit", "variant": variant, "report_path": str(report_path), "limit": int(limit)})
+        update_run_status(
+            run_context,
+            {
+                "status": "completed",
+                "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "report_path": str(report_path),
+                "summary_path": str(run_context.summary_path),
+            },
+        )
+        return StageResult("explain_audit", variant, run_context.run_dir, run_context.metrics_path, report_path=report_path)
+    except BaseException as exc:
+        write_failure_bundle(
+            run_context,
+            stage="explain_audit",
+            variant=variant,
+            exc=exc,
+            manifest_path=manifest_path,
+            index_path=index_path,
+            config_snapshot_path=run_context.config_snapshot_path,
+            metrics_path=run_context.metrics_path,
+        )
+        raise
+

@@ -1,138 +1,230 @@
 # GreyModel Framework Guide
 
-## Goal
+## Scope
 
-The repo is a finetuning framework around the grayscale inspection backbone, not just a model definition. It covers:
+`GreyModel` is a local-first framework for grayscale syringe and vial inspection. It combines:
 
-- dataset ingestion
-- staged training
-- evaluation
+- dataset ingestion and normalization
+- public pretraining
+- domain adaptation
+- supervised finetuning
 - calibration
+- hierarchical batch prediction
 - explainability
+- recovery and run tracking
+- a local Streamlit UI
 
-## Dataset Model
+The primary decision is always `good` vs `bad`. Defect-family probabilities are secondary evidence for bad samples.
 
-### Folder-First Import
+## End-To-End Workflow
 
-External production data still enters as folders. The framework immediately normalizes it into:
+### 1. Build a dataset bundle
 
-- `manifest.jsonl`
-- `splits.json`
-- `ontology.json`
-- `hard_negatives.jsonl`
-- `dataset_index.json`
+Folder-first import:
 
-This keeps the workflow reproducible while matching how inspection images are usually delivered.
+```bash
+python -m greymodel dataset build /path/to/images --output-dir data/production
+python -m greymodel dataset validate data/production/manifest.jsonl
+python -m greymodel dataset ontology --manifest data/production/manifest.jsonl
+```
 
-### Public Hugging Face Import
+Public Hugging Face import:
 
-Public pretraining data uses the same internal contract.
+```bash
+python -m greymodel dataset build-hf \
+  --dataset-preset defect_spectrum_full \
+  --output-dir data/public_pretrain/defect_spectrum_full
+```
 
-`greymodel dataset build-hf` now supports curated presets through `--dataset-preset`, for example:
+### 2. Train
 
-- `ds_dagm`
-- `defect_spectrum_full`
-- `mvtec_ad_gray`
+Pretrain:
 
-Key behavior:
+```bash
+torchrun --standalone --nproc_per_node=8 -m greymodel train pretrain \
+  --manifest data/public_pretrain/defect_spectrum_full/manifest.jsonl \
+  --index data/public_pretrain/defect_spectrum_full/dataset_index.json \
+  --variant base \
+  --run-root artifacts
+```
 
-- grayscale is enforced by default
-- optional RGB-to-grayscale conversion is explicit
-- mixed resolutions are shape-bucketed into pseudo-stations
-- imported records are stored locally and trained through the same manifest interface as production data
+Domain adaptation:
 
-## Training Workflow
+```bash
+python -m greymodel train domain-adapt \
+  --manifest data/production/manifest.jsonl \
+  --index data/production/dataset_index.json \
+  --variant base \
+  --run-root artifacts
+```
 
-### Smoke Runs Versus Real Runs
+Finetune:
 
-Smoke runs are still useful for verifying manifests, startup, and graph export. Real jobs are:
+```bash
+python -m greymodel train finetune \
+  --manifest data/production/manifest.jsonl \
+  --index data/production/dataset_index.json \
+  --variant base \
+  --run-root artifacts
+```
 
-- epoch-based
-- checkpointed
-- resumable
-- metrics-driven
+Calibration:
 
-### Distributed Strategy
+```bash
+python -m greymodel train calibrate \
+  --manifest data/production/manifest.jsonl \
+  --index data/production/dataset_index.json \
+  --variant base \
+  --run-root artifacts
+```
 
-The framework is now `FSDP`-first for large pretraining jobs.
+### 3. Evaluate
 
-- `--distributed-strategy fsdp` is the default multi-GPU path
-- `--distributed-strategy ddp` remains available for finetune/debug use
-- activation checkpointing, channels-last, and memory telemetry are exposed in the public CLI
+Benchmark:
 
-### Patch-Based Public Pretraining
+```bash
+python -m greymodel eval benchmark \
+  --manifest data/production/manifest.jsonl \
+  --index data/production/dataset_index.json \
+  --variant base \
+  --run-root artifacts
+```
 
-Public pretraining no longer runs full imported public images through the backbone.
+Threshold sweep:
 
-Instead:
+```bash
+python -m greymodel eval threshold-sweep \
+  --manifest data/production/manifest.jsonl \
+  --index data/production/dataset_index.json \
+  --variant base
+```
 
-1. import the dataset into a manifest bundle
-2. sample bounded square crops from the imported full images at train time
-3. run masked reconstruction on those crops
+Compare reports:
 
-This is the main safeguard against the oversized public-image VRAM failures that the older flow triggered.
+```bash
+python -m greymodel eval compare \
+  --left-report artifacts/benchmark-base/reports/benchmark_report.json \
+  --right-report artifacts/predict-base/reports/predict_report.json
+```
 
-Important knobs:
+### 4. Predict
 
-- `--pretrain-crop-size`
-- `--pretrain-num-crops`
-- `--pretrain-crop-scales`
-- `--max-global-feature-grid`
-- `--memory-report`
+Manifest-backed prediction:
 
-### Domain Adaptation
+```bash
+python -m greymodel predict \
+  --manifest data/production/manifest.jsonl \
+  --index data/production/dataset_index.json \
+  --variant base \
+  --run-root artifacts \
+  --evidence-policy bad
+```
 
-Domain adaptation still runs on unlabeled production frames and keeps the shared manifest/index workflow.
+Folder-backed prediction:
 
-### Finetuning
+```bash
+python -m greymodel predict \
+  --input-dir /path/to/incoming_images \
+  --variant lite \
+  --run-root artifacts
+```
 
-Finetuning still uses the full production station canvas and the existing reject/defect/heatmap contract. Station-balanced sampling remains available.
+### 5. Explain
 
-## Run Artifacts
+Single sample:
 
-Training runs write:
+```bash
+python -m greymodel explain sample \
+  --manifest data/production/manifest.jsonl \
+  --index data/production/dataset_index.json \
+  --sample-id sample_001 \
+  --variant base \
+  --run-root artifacts
+```
 
+Audit batch:
+
+```bash
+python -m greymodel explain audit \
+  --manifest data/production/manifest.jsonl \
+  --index data/production/dataset_index.json \
+  --variant base \
+  --run-root artifacts \
+  --limit 20
+```
+
+## Artifact Layout
+
+Every run writes under `<run_root>/<stage>-<variant>/`.
+
+Core files:
+
+- `run_status.json`
 - `metrics.jsonl`
 - `epoch_metrics.jsonl`
 - `config_snapshot.json`
 - `manifest_snapshot.json`
-- `checkpoints/latest.pt`
-- `checkpoints/best.pt`
-- `reports/<stage>_report.json`
-- `reports/training_summary.json`
+- `checkpoints/`
+- `reports/`
+- `predictions/`
+- `explanations/`
+- `failures/`
+- `sessions/<session_id>/...`
 
-When `--memory-report` is enabled, step and epoch artifacts also include CUDA allocation and reserve metrics, plus per-rank summary memory when available.
+The latest stage state stays in the stable stage directory. Session folders preserve point-in-time status and failure artifacts.
 
-## Evaluation
+## Prediction Records
 
-Evaluation remains framework-level:
+Prediction persistence is hierarchical:
 
-- FAR
-- FRR
-- AUROC
-- PR behavior
-- per-defect-family slices
-- tiny / medium / global defect slices
-- per-station behavior
+- `primary_label`
+- `primary_score`
+- `top_defect_family`
+- `defect_family_probs`
+- `evidence`
 
-## Explainability
+This is the contract used by:
 
-The explainability stack still includes:
+- batch prediction output
+- evaluation
+- recovery bundles
+- the UI
 
-- `torch.fx` architecture graph export
-- Mermaid graph output
-- sample-level attribution bundles
-- heatmaps and top tiles
+## Recovery Model
 
-The graph exporter was updated to follow the current CNN-heavy model instead of the earlier transformer-specific internals.
+If a run fails after initialization, GreyModel writes:
 
-## CLI Shape
+- run status with `failed` or `completed_with_failures`
+- traceback bundle
+- manifest and index references
+- checkpoint references when available
+- offending sample ids for quarantined batch failures
 
-The CLI groups remain:
+See [recovery.md](recovery.md) for the exact payload.
 
-- `dataset`
-- `train`
-- `eval`
-- `explain`
+## UI
 
-The public shape did not change, but `train pretrain` now accepts the new patch-pretraining and distributed-runtime flags directly.
+Launch:
+
+```bash
+python -m greymodel ui --run-root artifacts --data-root data
+```
+
+The UI is local-only and reads the same on-disk artifacts that the CLI writes.
+
+If your compute environment is Slurm-backed, start the UI with cluster defaults so the `Train`, `Predict`, and `Explain` pages submit GPU work through `sbatch` instead of local subprocesses:
+
+```bash
+python -m greymodel ui \
+  --run-root artifacts \
+  --data-root data \
+  --default-execution-backend slurm \
+  --slurm-cpus 8 \
+  --slurm-mem 50G \
+  --slurm-gres gpu:8 \
+  --slurm-partition batch_gpu \
+  --slurm-queue 3h \
+  --slurm-nproc-per-node 8
+```
+
+The Streamlit process itself still stays local. Only the launched GPU jobs are scheduled through Slurm.

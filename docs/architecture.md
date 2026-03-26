@@ -1,157 +1,156 @@
 # GreyModel Architecture Walkthrough
 
-## Overview
+## Objective
 
-`GreyModel` is built for grayscale syringe and vial inspection where defect scale ranges from micro-particles to full-frame anomalies. The current `GrayInspect-H` implementation is a CNN-heavy hybrid:
+`GreyModel` is designed for grayscale syringe and vial inspection where defect scale spans:
 
-- grayscale stem
-- ConvNeXt-style feature pyramid
-- BiFPN-style top-down and bottom-up fusion
-- one bounded coarse-context block at the lowest-resolution feature map
-- a separate local tile branch for tiny defects
-- station and geometry conditioning
-- fused reject, defect-family, and weak heatmap heads
+- tiny particles around `5x5`
+- medium scratches or streaks
+- full-image anomalies
 
-The inference contract did not change, but the training internals were redesigned for lower VRAM usage and more robust public-data pretraining.
+The model keeps one shared backbone family across stations while preserving:
 
-## Preprocessing
+- grayscale `8-bit` input handling
+- rectangular and square station support
+- aspect-ratio-safe preprocessing
+- `Base`/`Lite` output parity
 
-Input remains:
+## Input And Preprocessing
 
-- one `uint8` grayscale image
+Input contract:
+
+- one grayscale `uint8` image
 - `station_id`
-- `geometry_mode` (`rect` or `square`)
+- `geometry_mode`
 
-Preprocessing still:
+Preprocessing:
 
-- preserves aspect ratio
-- pads to the station canvas
-- emits a valid-pixel mask
-- normalizes after padding
+- preserve aspect ratio
+- pad to the station canvas
+- emit a valid-pixel mask
+- normalize after padding
 
-This keeps geometry intact across rectangular and square stations and prevents padding from leaking into the model.
+This prevents geometry distortion and keeps padding from corrupting defect evidence.
 
 ## Backbone
 
+The current `GrayInspect-H` implementation is a CNN-heavy hybrid:
+
+- grayscale stem
+- ConvNeXt-style pyramid
+- BiFPN-style fusion
+- bounded coarse context block
+- high-resolution local defect branch
+- station and geometry conditioning
+- fused reject / defect-family / weak-heatmap heads
+
 ### Grayscale Stem
 
-The stem uses small-stride convolutions to retain fine grayscale contrast before the pyramid gets deeper. This is the first guardrail for `5x5`-scale defects.
+The stem uses small-stride convolution so grayscale micro-contrast survives into the feature pyramid.
 
-### ConvNeXt-Style Pyramid
+### Feature Pyramid
 
-After the stem, the backbone builds feature maps at roughly:
+The pyramid builds multiscale features at roughly:
 
 - `1/4`
 - `1/8`
 - `1/16`
 - `1/32`
 
-Each stage uses ConvNeXt-style depthwise-heavy blocks, with station/geometry conditioning applied between stages.
+This supports both large structural context and localized fine detail.
 
 ### BiFPN-Style Fusion
 
-The pyramid is fused with repeated BiFPN-style blocks. This keeps high-resolution detail alive while still letting low-resolution semantic context propagate back upward.
-
-The weak heatmap head is attached to the high-resolution fused feature map, not to the coarse global map, so localization stays sharp enough for audit and relabeling workflows.
+The fusion stack keeps high-resolution detail alive while still propagating low-resolution semantic context back upward.
 
 ### Bounded Coarse Context
 
-The global context path is now bounded. Only the lowest-resolution feature map passes through a coarse-context attention block, and the exported global feature map is pooled down to `max_global_feature_grid`.
+Global context is only applied on the coarsest feature map and bounded by `max_global_feature_grid`.
 
-That is the key difference from the older transformer-heavy design:
+That keeps global reasoning without allowing memory to explode with public pretraining image size.
 
-- context is still global
-- memory is no longer allowed to scale with the full imported public image size
+### Local Branch
 
-### Local Defect Branch
+The local branch runs on overlapping tiles from the padded full image. This is the main protection for `5x5` defects.
 
-The local branch still uses overlapping tiles extracted from the padded image. It exists for one reason: tiny defects do not survive a purely coarse global path.
-
-The local branch produces:
+Outputs from the local branch include:
 
 - tile logits
 - top-tile evidence
-- a local heatmap
-
-These are fused with the coarse global signal before the final decision heads.
+- local weak heatmap
 
 ## Conditioning
 
-`station_id` and `geometry_mode` are embedded and fed into lightweight affine conditioning layers. This keeps one shared backbone across stations instead of splitting the system into separate station-specific networks.
+`station_id` and `geometry_mode` are fed into lightweight conditioning layers so one shared model family can adapt across stations without forking into separate station-specific backbones.
 
-## Heads
+## Heads And Output
 
-The model exposes:
+The model produces:
 
-- binary accept/reject logit and score
-- multi-label defect-family logits and probabilities
+- calibrated binary reject score / logit
+- defect-family probabilities
 - weak heatmap
 - top tile evidence
 
-`Base` and `Lite` keep the same public outputs. `Lite` reduces channel counts, fusion repeats, and local-path capacity without changing the contract.
+At the framework level this is persisted as a hierarchical prediction record:
 
-## Tiny-Defect Protection
-
-The design preserves tiny evidence through several layers of protection:
-
-- aspect-preserving preprocessing
-- valid-mask-aware training
-- overlapping local tiles
-- high-resolution fused heatmap head
-- delayed fusion of local and global evidence
+- `primary_label`
+- `primary_score`
+- `top_defect_family`
+- `defect_family_probs`
+- `evidence`
 
 ## Training Stages
 
 ### Public Pretraining
 
-Public-data pretraining is now patch-based by default.
+Public pretraining is patch-based by default:
 
-The workflow is:
+1. import public images into a manifest bundle
+2. sample bounded grayscale crops at train time
+3. run masked reconstruction on those crops
 
-1. import a public Hugging Face dataset into a manifest bundle
-2. keep the imported full images on disk
-3. sample bounded square grayscale crops at train time
-4. run masked reconstruction on those crops with `global_only` forward mode
-
-This is the main VRAM fix for heterogeneous public datasets.
+This is the main public-data VRAM safeguard.
 
 ### Domain Adaptation
 
-Domain adaptation keeps the same manifest contract but uses the production unlabeled images. The objective remains consistency between local and global evidence.
+Domain adaptation runs on unlabeled production frames and keeps the same manifest/index workflow.
 
 ### Finetuning
 
-Finetuning uses the full production station canvas and the shared reject/defect/heatmap heads. `DDP` remains available here as a simpler fallback.
+Finetuning runs on full production station canvases and optimizes the binary primary decision plus defect-family secondary outputs.
 
 ### Calibration
 
-Calibration is still per-station and external to the shared backbone.
+Calibration remains external to the shared backbone and is stored per station.
 
 ## Distributed Runtime
 
-The training runtime is now:
+The training runtime is:
 
-- `FSDP`-first for multi-GPU pretraining
-- `DDP` fallback for finetune/debug flows
-- optional activation checkpointing
-- `bf16`/`fp16` autocast
+- `FSDP`-first for large multi-GPU pretraining
+- `DDP` fallback for simpler finetune/debug paths
+- activation checkpointing
+- mixed precision
 - channels-last support
-- explicit memory telemetry in metrics and reports
+- explicit memory telemetry
 
 ## Explainability
 
-The architecture graph is still exported through `torch.fx`, but the adapter is now aligned with the CNN-heavy implementation rather than the old transformer branch.
+Explainability includes:
 
-Sample-level XAI still includes:
+- `torch.fx` graph export
+- Mermaid graphs
+- sample attribution maps
+- weak heatmaps
+- top-tile bundles
 
-- attribution map
-- heatmap
-- top tiles
-- prediction bundle
+Artifacts are written under:
 
-Graph artifacts remain:
+- `docs/graphs/`
+- run `explanations/`
+- run `reports/`
 
-- `docs/graphs/base/model_graph.mmd`
-- `docs/graphs/lite/model_graph.mmd`
+## Recovery Integration
 
-Mermaid is always written; DOT is still optional when Graphviz is available.
+Training, prediction, evaluation, and explainability stages all write run status and failure bundles. This is part of the architecture, not an afterthought, because inspection workflows need usable artifacts even on partial failure.
