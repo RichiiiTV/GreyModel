@@ -143,6 +143,32 @@ This launches the local Streamlit operator UI for browsing datasets, runs, failu
 python -m greymodel ui --run-root artifacts --data-root data
 ```
 
+HPC or Jupyter-proxied UI:
+
+This keeps the UI process local to your notebook or HPC session, but resolves the externally reachable URL through either Jupyter port proxying or JupyterHub service-prefix routing. `--print-url` prints the proxied URL first so you can open the correct route instead of guessing the raw port.
+
+Notebook-style arbitrary port proxy:
+
+```bash
+python -m greymodel ui \
+  --run-root artifacts \
+  --data-root data \
+  --proxy-mode auto \
+  --bind-port 8501 \
+  --print-url
+```
+
+JupyterHub service-prefix routing:
+
+```bash
+python -m greymodel ui \
+  --run-root artifacts \
+  --data-root data \
+  --proxy-mode jupyter_service \
+  --base-url-path /services/greymodel/ \
+  --print-url
+```
+
 Local UI with Slurm defaults:
 
 This launches the same UI, but it preconfigures the execution backend so the job forms default to `sbatch` submissions instead of local Python processes. The UI still runs locally; only the GPU workloads are handed off to Slurm.
@@ -162,7 +188,7 @@ python -m greymodel ui \
 
 Dry-run the UI launch command:
 
-This prints the exact Streamlit launch command without starting the UI, which is useful for debugging environments or copying the command into another shell. It also shows any Slurm defaults that will be injected into the UI job forms.
+This prints the exact Streamlit launch command without starting the UI, which is useful for debugging environments or copying the command into another shell. It also returns the resolved local and proxied URLs, plus any Slurm defaults that will be injected into the UI job forms.
 
 ```bash
 python -m greymodel ui --run-root artifacts --data-root data --dry-run
@@ -203,7 +229,7 @@ Explainability:
 Framework operations:
 
 - `python -m greymodel predict ...`: Run hierarchical batch inference over either a manifest or a raw folder and persist predictions, reports, explanations, and quarantined failures.
-- `python -m greymodel ui ...`: Launch the local Streamlit UI that reads the same on-disk framework artifacts the CLI produces. You can also preseed Slurm defaults here so UI-launched GPU jobs submit through `sbatch`.
+- `python -m greymodel ui ...`: Launch the local Streamlit UI that reads the same on-disk framework artifacts the CLI produces. It can auto-detect Jupyter/HPC proxying, print the resolved proxy URL, and still preseed Slurm defaults for UI-launched GPU jobs.
 
 ## Run Artifacts
 

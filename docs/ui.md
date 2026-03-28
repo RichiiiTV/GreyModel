@@ -8,6 +8,30 @@ Start the local Streamlit UI:
 python -m greymodel ui --run-root artifacts --data-root data
 ```
 
+Start the UI in an HPC or Jupyter notebook session:
+
+Notebook-style arbitrary port proxy:
+
+```bash
+python -m greymodel ui \
+  --run-root artifacts \
+  --data-root data \
+  --proxy-mode auto \
+  --bind-port 8501 \
+  --print-url
+```
+
+JupyterHub service-prefix routing:
+
+```bash
+python -m greymodel ui \
+  --run-root artifacts \
+  --data-root data \
+  --proxy-mode jupyter_service \
+  --base-url-path /services/greymodel/ \
+  --print-url
+```
+
 Start the UI with Slurm defaults for GPU jobs:
 
 ```bash
@@ -29,6 +53,8 @@ Preview the exact launch command without starting Streamlit:
 python -m greymodel ui --run-root artifacts --data-root data --dry-run
 ```
 
+In HPC mode, `--dry-run` also reports the resolved `local_url`, `proxy_url`, `proxy_mode`, and `base_url_path`.
+
 The UI is:
 
 - local only
@@ -37,6 +63,12 @@ The UI is:
 - file-backed
 
 The UI process always runs locally. Slurm integration only affects the jobs launched from the compute pages.
+
+For Jupyter or HPC use:
+
+- `jupyter_port` mode assumes the notebook server proxies arbitrary ports like `/proxy/<port>/` and strips that prefix before forwarding
+- `jupyter_service` mode assumes the UI is mounted under a stable prefix and therefore needs `server.baseUrlPath`
+- `auto` prefers service-prefix routing when `JUPYTERHUB_SERVICE_URL` is present, otherwise it falls back to notebook-style port proxy detection
 
 ## Pages
 

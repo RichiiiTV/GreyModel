@@ -310,8 +310,16 @@ def build_parser() -> argparse.ArgumentParser:
     ui.add_argument("--run-root", default="artifacts")
     ui.add_argument("--data-root", default="data")
     ui.add_argument("--dataset-root", dest="data_root")
-    ui.add_argument("--host", default="127.0.0.1")
-    ui.add_argument("--port", type=int, default=8501)
+    ui.add_argument("--bind-address", default=None)
+    ui.add_argument("--host", dest="bind_address", default=None)
+    ui.add_argument("--bind-port", type=int, default=None)
+    ui.add_argument("--port", dest="bind_port", type=int, default=None)
+    ui.add_argument("--proxy-mode", choices=("auto", "off", "jupyter_port", "jupyter_service"), default="auto")
+    ui.add_argument("--public-base-url", default=None)
+    ui.add_argument("--base-url-path", default=None)
+    ui.add_argument("--browser-server-address", default=None)
+    ui.add_argument("--browser-server-port", type=int, default=None)
+    ui.add_argument("--print-url", action="store_true")
     ui.add_argument("--browser", action="store_true")
     ui.add_argument("--default-execution-backend", choices=("local", "slurm"), default="local")
     ui.add_argument("--slurm-cpus", type=int, default=8)
@@ -566,10 +574,16 @@ def _cmd_ui(args: argparse.Namespace):
     return launch_streamlit_ui(
         run_root=args.run_root,
         data_root=args.data_root,
-        host=args.host,
-        port=args.port,
+        bind_address=args.bind_address,
+        bind_port=args.bind_port,
         headless=not bool(args.browser),
         dry_run=bool(args.dry_run),
+        proxy_mode=args.proxy_mode,
+        public_base_url=args.public_base_url,
+        base_url_path=args.base_url_path,
+        browser_server_address=args.browser_server_address,
+        browser_server_port=args.browser_server_port,
+        print_url=bool(args.print_url),
         default_execution_backend=args.default_execution_backend,
         slurm_cpus=args.slurm_cpus,
         slurm_mem=args.slurm_mem,

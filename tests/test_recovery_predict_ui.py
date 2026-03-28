@@ -16,7 +16,7 @@ from greymodel import (
     run_prediction_stage,
     run_pretraining_stage,
 )
-from greymodel.ui import UIExecutionDefaults
+from greymodel.ui import UIExecutionDefaults, build_streamlit_command, launch_streamlit_ui, resolve_ui_proxy_configuration
 from greymodel.ui_app import _launch_managed_job, collect_ui_state, render_app
 
 
@@ -168,6 +168,8 @@ def test_ui_dry_run_and_render_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
     payload = cli_main(["ui", "--run-root", str(tmp_path / "runs"), "--dataset-root", str(data_root), "--dry-run"])
     assert "streamlit" in " ".join(payload["command"])
+    assert payload["proxy_mode"] == "off"
+    assert payload["local_url"] == payload["proxy_url"]
 
     state = collect_ui_state(tmp_path / "runs", data_root)
     assert "datasets" in state
@@ -202,16 +204,23 @@ def test_ui_dry_run_carries_slurm_defaults(tmp_path: Path) -> None:
             "3h",
             "--slurm-nproc-per-node",
             "8",
+            "--proxy-mode",
+            "jupyter_service",
+            "--base-url-path",
+            "/services/greymodel/",
         ]
     )
 
     assert payload["default_execution_backend"] == "slurm"
-    command_text = " ".join(payload["command"])
+    command = payload["command"]
+    command_text = " ".join(command)
     assert "--default-execution-backend" in command_text
     assert "--slurm-partition" in command_text
     assert "batch_gpu" in command_text
     assert "--slurm-queue" in command_text
     assert "3h" in command_text
+    assert "--server.baseUrlPath=services/greymodel" in command
+    assert command.index("--server.baseUrlPath=services/greymodel") < command.index("--")
 
 
 def test_ui_slurm_submission_writes_job_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -253,3 +262,74 @@ def test_ui_slurm_submission_writes_job_metadata(tmp_path: Path, monkeypatch: py
     assert "-q" in submit_command and "3h" in submit_command
     assert "--wrap" in submit_command
     assert "torch.distributed.run" in " ".join(payload["command"])
+
+
+def test_resolve_ui_proxy_auto_port_and_service_modes() -> None:
+    off = resolve_ui_proxy_configuration(proxy_mode="auto", env={})
+    assert off.proxy_mode == "off"
+    assert off.bind_address == "127.0.0.1"
+    assert off.base_url_path == ""
+    assert off.proxy_url == off.local_url
+
+    notebook = resolve_ui_proxy_configuration(
+        proxy_mode="auto",
+        bind_port=8899,
+        env={"JPY_PARENT_PID": "1", "JUPYTERHUB_SERVICE_PREFIX": "/user/ricardo/"},
+    )
+    assert notebook.proxy_mode == "jupyter_port"
+    assert notebook.bind_address == "0.0.0.0"
+    assert notebook.base_url_path == ""
+    assert notebook.proxy_url == "/user/ricardo/proxy/8899/"
+
+    service = resolve_ui_proxy_configuration(
+        proxy_mode="auto",
+        env={
+            "JUPYTERHUB_SERVICE_URL": "http://127.0.0.1:9911",
+            "JUPYTERHUB_SERVICE_PREFIX": "/services/greymodel/",
+        },
+    )
+    assert service.proxy_mode == "jupyter_service"
+    assert service.bind_address == "127.0.0.1"
+    assert service.bind_port == 9911
+    assert service.base_url_path == "services/greymodel"
+    assert service.proxy_url == "/services/greymodel/"
+
+
+def test_build_streamlit_command_emits_hpc_proxy_flags() -> None:
+    command = build_streamlit_command(
+        proxy_mode="jupyter_service",
+        bind_address="0.0.0.0",
+        bind_port=9001,
+        base_url_path="/services/greymodel/",
+        browser_server_address="cluster.example.org",
+        browser_server_port=443,
+    )
+
+    assert "--server.address=0.0.0.0" in command
+    assert "--server.port=9001" in command
+    assert "--server.baseUrlPath=services/greymodel" in command
+    assert "--browser.serverAddress=cluster.example.org" in command
+    assert "--browser.serverPort=443" in command
+    assert command.index("--server.baseUrlPath=services/greymodel") < command.index("--")
+
+
+def test_ui_dry_run_prefers_explicit_proxy_override_and_prints_url(capsys: pytest.CaptureFixture[str]) -> None:
+    payload = launch_streamlit_ui(
+        dry_run=True,
+        print_url=True,
+        proxy_mode="auto",
+        public_base_url="https://cluster.example.org/user/ricardo/",
+        bind_port=9010,
+        base_url_path="/services/explicit/",
+        env={
+            "JPY_PARENT_PID": "1",
+            "JUPYTERHUB_SERVICE_URL": "http://127.0.0.1:9911",
+            "JUPYTERHUB_SERVICE_PREFIX": "/services/env/",
+        },
+    )
+
+    captured = capsys.readouterr()
+    assert payload["proxy_mode"] == "jupyter_service"
+    assert payload["base_url_path"] == "services/explicit"
+    assert payload["proxy_url"] == "https://cluster.example.org/user/ricardo/services/explicit/"
+    assert "https://cluster.example.org/user/ricardo/services/explicit/" in captured.out
