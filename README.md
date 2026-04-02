@@ -8,6 +8,11 @@
 
 The framework is local-first and filesystem-based. There is no Docker requirement and no backend service.
 
+It ships with two inference lanes:
+
+- `prod_fast_native`: the low-latency native cascade for production screening. It runs a fast full-frame screen first and only refines uncertain or suspicious samples with MIL-style patch analysis.
+- review backends: `review_native_base`, `review_native_lite`, and Hugging Face profiles for richer offline review, explanation, and benchmarking workflows.
+
 ## What It Covers
 
 - folder-first dataset ingestion normalized into manifests
@@ -33,7 +38,7 @@ Full framework install:
 pip install -e .[framework]
 ```
 
-The `framework` extra includes PyTorch, `datasets`, Captum, Pillow, tqdm, and Streamlit.
+The `framework` extra includes PyTorch, `datasets`, Hugging Face Transformers, Captum, Pillow, tqdm, and Streamlit.
 
 ## Documentation
 
@@ -66,6 +71,34 @@ This pulls a public Hugging Face dataset preset, converts it into the same local
 python -m greymodel dataset build-hf \
   --dataset-preset defect_spectrum_full \
   --output-dir data/public_pretrain/defect_spectrum_full
+```
+
+Model profiles:
+
+Use model profiles to keep backend-specific settings on disk. `models register` creates a profile, `models list` shows what is available, and `models show` prints one profile. The same profile ID can then be passed to `predict`, `eval`, and `explain` with `--model-profile`.
+
+For native production use, the important built-in profile is `prod_fast_native`. It represents the two-stage low-latency screen-plus-patch cascade and is the profile you should benchmark against your `~5 ms` target.
+
+```bash
+python -m greymodel models show prod_fast_native
+
+python -m greymodel models register native_fast_custom \
+  --backend-family native \
+  --task-type native \
+  --native-variant fast \
+  --runtime-engine onnxruntime \
+  --latency-target-ms 5.0 \
+  --local-path /path/to/fast_native_checkpoint.pt
+
+python -m greymodel models register hf_cls \
+  --backend-family huggingface \
+  --task-type classification \
+  --model-id org/model-name \
+  --label-mapping-json '{"good":"good","scratch":"scratch","bad":"bad"}' \
+  --defect-family-mapping-json '{"scratch":"scratch"}'
+
+python -m greymodel models list
+python -m greymodel models show hf_cls
 ```
 
 Pretrain:
@@ -111,13 +144,13 @@ python -m greymodel train finetune \
 
 Batch prediction:
 
-This runs hierarchical inference over a manifest and writes persisted prediction records, reports, explanations, and failure bundles under the chosen run root.
+This runs hierarchical inference over a manifest and writes persisted prediction records, reports, explanations, and failure bundles under the chosen run root. If you pass `--model-profile prod_fast_native`, the runtime uses the low-latency cascade. Easy good samples can exit after the screen stage; uncertain samples trigger the MIL patch refiner.
 
 ```bash
 python -m greymodel predict \
   --manifest data/production/manifest.jsonl \
   --index data/production/dataset_index.json \
-  --variant base \
+  --model-profile prod_fast_native \
   --run-root artifacts \
   --evidence-policy bad
 ```
@@ -137,7 +170,7 @@ python -m greymodel explain sample \
 
 Local UI:
 
-This launches the local Streamlit operator UI for browsing datasets, runs, failures, reports, and explanations. The UI process itself stays local. From inside the UI, the `Train`, `Predict`, and `Explain` pages can either launch local subprocesses or submit GPU jobs to Slurm.
+This launches the local Streamlit operator UI for browsing datasets, models, runs, failures, reports, and explanations. The UI process itself stays local. From inside the UI, the `Train` page can launch local subprocesses or submit GPU jobs to Slurm, while `Predict & Review` and `Explain` support native GreyModel profiles and registered Hugging Face profiles from the workspace.
 
 ```bash
 python -m greymodel ui --run-root artifacts --data-root data
@@ -188,7 +221,7 @@ python -m greymodel ui \
 
 Dry-run the UI launch command:
 
-This prints the exact Streamlit launch command without starting the UI, which is useful for debugging environments or copying the command into another shell. It also returns the resolved local and proxied URLs, plus any Slurm defaults that will be injected into the UI job forms.
+This prints the exact Streamlit launch command without starting the UI, which is useful for debugging environments or copying the command into another shell. It also returns the resolved local and proxied URLs, plus any Slurm defaults that will be injected into the UI job forms. The UI keeps its own workspace file at `<run_root>/workspace.json` unless you override `--workspace-path`.
 
 ```bash
 python -m greymodel ui --run-root artifacts --data-root data --dry-run
@@ -215,7 +248,7 @@ Training:
 
 Evaluation:
 
-- `python -m greymodel eval benchmark ...`: Run a full benchmark over a manifest and write binary quality metrics, per-station slices, per-scale slices, and bad-sample defect-family results.
+- `python -m greymodel eval benchmark ...`: Run a full benchmark over a manifest and write binary quality metrics, per-station slices, per-scale slices, and bad-sample defect-family results. With `--model-profile prod_fast_native`, this is the main latency-and-quality check for the production cascade.
 - `python -m greymodel eval threshold-sweep ...`: Export metric behavior over a range of reject thresholds so you can choose operating points explicitly.
 - `python -m greymodel eval calibration ...`: Produce calibration statistics and recommended per-station reject thresholds from a manifest or saved predictions.
 - `python -m greymodel eval compare --left-report ... --right-report ...`: Compare two saved reports directly from disk to see metric deltas between runs.
@@ -229,7 +262,8 @@ Explainability:
 Framework operations:
 
 - `python -m greymodel predict ...`: Run hierarchical batch inference over either a manifest or a raw folder and persist predictions, reports, explanations, and quarantined failures.
-- `python -m greymodel ui ...`: Launch the local Streamlit UI that reads the same on-disk framework artifacts the CLI produces. It can auto-detect Jupyter/HPC proxying, print the resolved proxy URL, and still preseed Slurm defaults for UI-launched GPU jobs.
+- `python -m greymodel models list|show|register|delete ...`: Manage native and Hugging Face model profiles stored in the local registry. For native profiles, `--native-variant fast|base|lite` selects the production cascade or the review backbones.
+- `python -m greymodel ui ...`: Launch the local Streamlit UI that reads the same on-disk framework artifacts the CLI produces. It can auto-detect Jupyter/HPC proxying, print the resolved proxy URL, keep a workspace file, browse model profiles, and still preseed Slurm defaults for UI-launched GPU jobs.
 
 ## Run Artifacts
 

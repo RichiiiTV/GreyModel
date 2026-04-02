@@ -266,6 +266,7 @@ def build_streamlit_command(
     *,
     run_root: Path | str = "artifacts",
     data_root: Path | str = "data",
+    workspace_path: Path | str | None = None,
     host: str | None = None,
     port: int | None = None,
     bind_address: str | None = None,
@@ -321,6 +322,12 @@ def build_streamlit_command(
             str(run_root),
             "--data-root",
             str(data_root),
+        ]
+    )
+    if workspace_path is not None:
+        command.extend(["--workspace-path", str(workspace_path)])
+    command.extend(
+        [
             "--default-execution-backend",
             str(default_execution_backend),
             "--slurm-cpus",
@@ -346,6 +353,7 @@ def launch_ui(
     *,
     run_root: Path | str = "artifacts",
     data_root: Path | str = "data",
+    workspace_path: Path | str | None = None,
     host: str | None = None,
     port: int | None = None,
     bind_address: str | None = None,
@@ -369,6 +377,7 @@ def launch_ui(
     return launch_streamlit_ui(
         run_root=run_root,
         data_root=data_root,
+        workspace_path=workspace_path,
         host=host,
         port=port,
         bind_address=bind_address,
@@ -396,6 +405,7 @@ def launch_streamlit_ui(
     *,
     run_root: Path | str = "artifacts",
     data_root: Path | str = "data",
+    workspace_path: Path | str | None = None,
     host: str | None = None,
     port: int | None = None,
     bind_address: str | None = None,
@@ -432,6 +442,7 @@ def launch_streamlit_ui(
     command = build_streamlit_command(
         run_root=run_root,
         data_root=data_root,
+        workspace_path=workspace_path,
         bind_address=resolved_proxy.bind_address,
         bind_port=resolved_proxy.bind_port,
         headless=headless,
@@ -455,6 +466,7 @@ def launch_streamlit_ui(
         "streamlit_command": command,
         "run_root": str(run_root),
         "data_root": str(data_root),
+        "workspace_path": str(workspace_path) if workspace_path is not None else None,
         "host": resolved_proxy.bind_address,
         "port": int(resolved_proxy.bind_port),
         "bind_address": resolved_proxy.bind_address,

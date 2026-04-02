@@ -65,6 +65,8 @@ class TrainingConfig:
     channels_last: bool = False
     ema_decay: float = 0.0
     compile_model: bool = False
+    model_profile: Optional[str] = None
+    model_registry_root: Optional[str] = None
 
     def resolved_grad_accum_steps(self, world_size: int) -> int:
         base = max(1, self.per_device_batch_size * max(world_size, 1))

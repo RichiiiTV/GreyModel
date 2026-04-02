@@ -211,6 +211,46 @@ class DatasetIndex:
 
 
 @dataclass(frozen=True)
+class ModelProfile:
+    profile_id: str
+    display_name: str
+    backend_family: str
+    task_type: str
+    variant: Optional[str] = None
+    checkpoint_path: Optional[str] = None
+    hf_model_id: Optional[str] = None
+    hf_revision: Optional[str] = None
+    hf_local_path: Optional[str] = None
+    hf_processor_id: Optional[str] = None
+    runtime_engine: str = "pytorch"
+    cache_policy: str = "online_cache"
+    cache_dir: Optional[str] = None
+    label_mapping: Mapping[str, Any] = field(default_factory=dict)
+    thresholds: Mapping[str, float] = field(default_factory=dict)
+    export_path: Optional[str] = None
+    supports_training: bool = False
+    supports_prediction: bool = True
+    supports_explain: bool = True
+    supports_benchmark: bool = True
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class WorkspaceConfig:
+    workspace_root: str
+    run_root: str = "artifacts"
+    data_root: str = "data"
+    profiles_dir: str = "profiles"
+    cache_root: Optional[str] = None
+    active_dataset_manifest: Optional[str] = None
+    active_dataset_index: Optional[str] = None
+    active_profile_id: Optional[str] = None
+    slurm_defaults: Mapping[str, Any] = field(default_factory=dict)
+    ui_preferences: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class PredictionEvidence:
     heatmap_path: Optional[str] = None
     top_tiles_path: Optional[str] = None
@@ -281,6 +321,48 @@ class HierarchicalPredictionRecord:
             raise ValueError("HierarchicalPredictionRecord.predicted_label must be 0 or 1.")
         if isinstance(self.evidence, Mapping):
             object.__setattr__(self, "evidence", PredictionEvidence(**self.evidence))
+
+
+@dataclass(frozen=True)
+class JobRecord:
+    job_id: str
+    kind: str
+    backend_family: str
+    execution_backend: str
+    status: str
+    command: Tuple[str, ...] = ()
+    resolved_profile_id: Optional[str] = None
+    log_path: Optional[str] = None
+    run_dir: Optional[str] = None
+    metadata_path: Optional[str] = None
+    retry_target: Optional[str] = None
+    resume_target: Optional[str] = None
+    created_at: Optional[str] = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.command, list):
+            object.__setattr__(self, "command", tuple(str(value) for value in self.command))
+
+
+@dataclass(frozen=True)
+class LatencyReport:
+    backend_family: str
+    runtime_engine: str
+    accelerator: str
+    batch_size: int
+    image_shape: Tuple[int, int]
+    iterations: int
+    warmup_iterations: int
+    mean_ms: float
+    p50_ms: float
+    p95_ms: float
+    throughput_per_second: float
+    peak_memory_mb: float
+    target_ms: Optional[float] = None
+    meets_target: Optional[bool] = None
+    profile_id: Optional[str] = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

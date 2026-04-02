@@ -32,6 +32,25 @@ from .evaluation import (
 )
 from .explainability import build_audit_report, build_explanation_bundle
 from .graphing import export_model_graph
+from .hf_backends import (
+    HuggingFaceClassificationAdapter,
+    HuggingFaceDetectionAdapter,
+    HuggingFaceSegmentationAdapter,
+    build_huggingface_model_backend,
+)
+from .model_profiles import (
+    MODEL_PROFILE_REGISTRY_DIRNAME,
+    PROFILE_SCHEMA_VERSION,
+    ModelProfile,
+    delete_model_profile,
+    ensure_default_model_profiles,
+    list_model_profiles,
+    load_model_profile,
+    model_profile_path,
+    model_profile_registry_dir,
+    register_model_profile,
+    save_model_profile,
+)
 from .prediction import run_batch_prediction_stage
 from .preprocessing import PreparedImage, preprocess_image, preprocess_sample, stack_prepared_images
 from .pretrain_registry import PretrainDatasetPreset, get_pretrain_dataset_preset, list_pretrain_dataset_presets
@@ -115,6 +134,9 @@ __all__ = [
     "GeometryMode",
     "get_pretrain_dataset_preset",
     "GreyInspectionDataset",
+    "HuggingFaceClassificationAdapter",
+    "HuggingFaceDetectionAdapter",
+    "HuggingFaceSegmentationAdapter",
     "group_samples_by_station",
     "HierarchicalPredictionRecord",
     "ingest_dataset_manifest",
@@ -129,14 +151,18 @@ __all__ = [
     "list_pretrain_dataset_presets",
     "list_run_statuses",
     "LiteModel",
+    "list_model_profiles",
     "load_dataset_index",
     "load_dataset_manifest",
+    "load_model_profile",
     "load_run_status",
     "log_epoch_metrics",
     "log_metrics",
     "log_step_metrics",
     "ManifestInspectionDataset",
+    "MODEL_PROFILE_REGISTRY_DIRNAME",
     "ModelInput",
+    "ModelProfile",
     "ModelOutput",
     "PredictionEvidence",
     "PredictionRecord",
@@ -144,8 +170,10 @@ __all__ = [
     "predict_hierarchical_dataset",
     "PreparedImage",
     "PretrainDatasetPreset",
+    "PROFILE_SCHEMA_VERSION",
     "preprocess_image",
     "preprocess_sample",
+    "register_model_profile",
     "register_synthetic_recipe",
     "RunContext",
     "run_batch_prediction_stage",
@@ -179,5 +207,11 @@ __all__ = [
     "verify_defect_coverage",
     "write_failure_bundle",
     "write_summary",
+    "build_huggingface_model_backend",
+    "delete_model_profile",
+    "ensure_default_model_profiles",
+    "model_profile_path",
+    "model_profile_registry_dir",
+    "save_model_profile",
     "__version__",
 ]

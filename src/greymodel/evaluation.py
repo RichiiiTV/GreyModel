@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
-from typing import Callable, Dict, Iterable, Optional, Sequence
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 import numpy as np
 
 from .api import BaseModel, LiteModel
+from .backends import create_inference_backend
 from .data import (
     DatasetRecord,
     infer_defect_scale,
@@ -16,6 +17,7 @@ from .data import (
     station_config_for_record,
 )
 from .explainability import build_explanation_bundle
+from .profiles import ModelProfile, resolve_model_profile
 from .types import HierarchicalPredictionRecord, ModelInput, PredictionEvidence, PredictionRecord
 from .utils import load_uint8_grayscale, read_json, read_jsonl, write_json, write_jsonl
 
@@ -113,12 +115,32 @@ def _variant_model(variant: str, num_defect_families: int, defect_families: Sequ
     return BaseModel(num_defect_families=num_defect_families, defect_families=defect_families)
 
 
+def _resolve_model_backend(
+    *,
+    variant: str,
+    num_defect_families: int,
+    defect_families: Sequence[str],
+    model_profile: ModelProfile | Mapping[str, Any] | Path | str | None = None,
+    model_registry_root: Path | str | None = None,
+):
+    if model_profile is None:
+        return _variant_model(variant, num_defect_families=num_defect_families, defect_families=defect_families)
+    profile = model_profile if isinstance(model_profile, ModelProfile) else resolve_model_profile(model_profile, profiles_dir=model_registry_root)
+    return create_inference_backend(
+        profile=profile,
+        defect_families=defect_families,
+        num_stations=32,
+        profiles_dir=model_registry_root,
+    )
+
+
 def _build_prediction_record(
     record: DatasetRecord,
     output,
     station_config,
     defect_families: Sequence[str],
     evidence: PredictionEvidence | None = None,
+    model_metadata: Mapping[str, Any] | None = None,
 ) -> PredictionRecord:
     reject_score = float(np.asarray(output.reject_score).reshape(()))
     predicted_label = int(reject_score >= float(station_config.reject_threshold))
@@ -154,7 +176,11 @@ def _build_prediction_record(
         ),
         split=record.split,
         defect_scale=infer_defect_scale(record),
-        metadata={"product_family": record.product_family, **dict(record.capture_metadata or {})},
+        metadata={
+            "product_family": record.product_family,
+            **dict(record.capture_metadata or {}),
+            **dict(model_metadata or {}),
+        },
     )
 
 
@@ -168,6 +194,8 @@ def predict_records(
     defect_families: Sequence[str] = (),
     evidence_root: Optional[Path | str] = None,
     evidence_policy: str = "none",
+    model_profile: ModelProfile | Mapping[str, Any] | Path | str | None = None,
+    model_registry_root: Path | str | None = None,
     on_error: Optional[Callable[[DatasetRecord, BaseException], None]] = None,
     continue_on_error: bool = False,
 ) -> list[PredictionRecord]:
@@ -182,9 +210,20 @@ def predict_records(
             defect_families = tuple(ontology.get("defect_tags", []))
     else:
         defect_families = tuple(defect_families)
+    if model_profile is not None:
+        profile = model_profile if isinstance(model_profile, ModelProfile) else resolve_model_profile(model_profile, profiles_dir=model_registry_root)
+        mapped = tuple(str(value) for value in (profile.label_mapping.get("defect_families") or ()))
+        if not defect_families and mapped:
+            defect_families = mapped
     if num_defect_families is None:
         num_defect_families = max(len(defect_families), 1)
-    model = _variant_model(variant, num_defect_families=num_defect_families, defect_families=defect_families)
+    model = _resolve_model_backend(
+        variant=variant,
+        num_defect_families=num_defect_families,
+        defect_families=defect_families,
+        model_profile=model_profile,
+        model_registry_root=model_registry_root,
+    )
     predictions: list[PredictionRecord] = []
     evidence_policy = str(evidence_policy or "none").lower()
 
@@ -199,7 +238,14 @@ def predict_records(
             )
             station_config = station_config_for_record(record, station_configs)
             output = model.forward(model_input, station_config)
-            provisional = _build_prediction_record(record, output, station_config, defect_families)
+            model_metadata = dict(getattr(output, "metadata", {}) or {})
+            provisional = _build_prediction_record(
+                record,
+                output,
+                station_config,
+                defect_families,
+                model_metadata=model_metadata,
+            )
             write_bundle = evidence_policy == "all" or (evidence_policy == "bad" and provisional.primary_label == "bad")
             if write_bundle and evidence_root is not None:
                 sample_dir = Path(evidence_root) / record.sample_id.replace("/", "_")
@@ -212,7 +258,14 @@ def predict_records(
                     station_decision=provisional.evidence.station_decision,
                     metadata={"prediction_path": str(bundle["prediction_path"])},
                 )
-                provisional = _build_prediction_record(record, output, station_config, defect_families, evidence=evidence)
+                provisional = _build_prediction_record(
+                    record,
+                    output,
+                    station_config,
+                    defect_families,
+                    evidence=evidence,
+                    model_metadata=model_metadata,
+                )
             predictions.append(provisional)
         except BaseException as exc:
             if on_error is not None:
@@ -230,6 +283,8 @@ def predict_dataset(
     num_defect_families: Optional[int] = None,
     evidence_root: Optional[Path | str] = None,
     evidence_policy: str = "none",
+    model_profile: ModelProfile | Mapping[str, Any] | Path | str | None = None,
+    model_registry_root: Path | str | None = None,
     on_error: Optional[Callable[[DatasetRecord, BaseException], None]] = None,
     continue_on_error: bool = False,
 ) -> list[PredictionRecord]:
@@ -246,6 +301,8 @@ def predict_dataset(
         num_defect_families=num_defect_families,
         evidence_root=evidence_root,
         evidence_policy=evidence_policy,
+        model_profile=model_profile,
+        model_registry_root=model_registry_root,
         on_error=on_error,
         continue_on_error=continue_on_error,
     )
@@ -258,6 +315,8 @@ def predict_hierarchical_dataset(
     num_defect_families: Optional[int] = None,
     evidence_root: Optional[Path | str] = None,
     evidence_policy: str = "none",
+    model_profile: ModelProfile | Mapping[str, Any] | Path | str | None = None,
+    model_registry_root: Path | str | None = None,
     on_error: Optional[Callable[[DatasetRecord, BaseException], None]] = None,
     continue_on_error: bool = False,
 ) -> list[HierarchicalPredictionRecord]:
@@ -268,6 +327,8 @@ def predict_hierarchical_dataset(
         num_defect_families=num_defect_families,
         evidence_root=evidence_root,
         evidence_policy=evidence_policy,
+        model_profile=model_profile,
+        model_registry_root=model_registry_root,
         on_error=on_error,
         continue_on_error=continue_on_error,
     )
@@ -381,9 +442,17 @@ def benchmark_manifest(
     index_path: Optional[Path | str] = None,
     variant: str = "base",
     output_path: Optional[Path | str] = None,
+    model_profile: ModelProfile | Mapping[str, Any] | Path | str | None = None,
+    model_registry_root: Path | str | None = None,
 ) -> dict:
     records = load_dataset_manifest(manifest_path)
-    predictions = predict_dataset(manifest_path, index_path=index_path, variant=variant)
+    predictions = predict_dataset(
+        manifest_path,
+        index_path=index_path,
+        variant=variant,
+        model_profile=model_profile,
+        model_registry_root=model_registry_root,
+    )
     report = evaluate_predictions(records, predictions)
     if output_path is not None:
         write_json(Path(output_path), report)
@@ -395,10 +464,17 @@ def build_calibration_report(
     predictions_path: Optional[Path | str] = None,
     index_path: Optional[Path | str] = None,
     output_path: Optional[Path | str] = None,
+    model_profile: ModelProfile | Mapping[str, Any] | Path | str | None = None,
+    model_registry_root: Path | str | None = None,
 ) -> dict:
     records = load_dataset_manifest(manifest_path)
     if predictions_path is None:
-        predictions = predict_dataset(manifest_path, index_path=index_path)
+        predictions = predict_dataset(
+            manifest_path,
+            index_path=index_path,
+            model_profile=model_profile,
+            model_registry_root=model_registry_root,
+        )
     else:
         predictions = load_predictions(predictions_path)
     by_station: Dict[str, list[PredictionRecord]] = {}

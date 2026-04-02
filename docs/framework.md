@@ -16,6 +16,11 @@
 
 The primary decision is always `good` vs `bad`. Defect-family probabilities are secondary evidence for bad samples.
 
+The framework exposes two inference lanes:
+
+- `prod_fast_native`: a production-oriented native cascade with a full-frame screen stage and a patch/MIL refiner for uncertain samples.
+- review backends: `review_native_base`, `review_native_lite`, and Hugging Face profiles for richer offline inspection and comparison.
+
 ## End-To-End Workflow
 
 ### 1. Build a dataset bundle
@@ -35,6 +40,30 @@ python -m greymodel dataset build-hf \
   --dataset-preset defect_spectrum_full \
   --output-dir data/public_pretrain/defect_spectrum_full
 ```
+
+Model profiles:
+
+```bash
+python -m greymodel models show prod_fast_native
+
+python -m greymodel models register native_fast_custom \
+  --backend-family native \
+  --task-type native \
+  --native-variant fast \
+  --runtime-engine onnxruntime \
+  --latency-target-ms 5.0 \
+  --local-path /path/to/fast_native_checkpoint.pt
+
+python -m greymodel models register hf_cls \
+  --backend-family huggingface \
+  --task-type classification \
+  --model-id org/model-name \
+  --label-mapping-json '{"good":"good","scratch":"scratch","bad":"bad"}' \
+  --defect-family-mapping-json '{"scratch":"scratch"}'
+```
+
+Registered profiles can then be used with `--model-profile hf_cls` on `predict`, `eval`, and `explain`.
+For production screening, prefer `--model-profile prod_fast_native`.
 
 ### 2. Train
 
@@ -86,7 +115,7 @@ Benchmark:
 python -m greymodel eval benchmark \
   --manifest data/production/manifest.jsonl \
   --index data/production/dataset_index.json \
-  --variant base \
+  --model-profile prod_fast_native \
   --run-root artifacts
 ```
 
@@ -115,7 +144,7 @@ Manifest-backed prediction:
 python -m greymodel predict \
   --manifest data/production/manifest.jsonl \
   --index data/production/dataset_index.json \
-  --variant base \
+  --model-profile prod_fast_native \
   --run-root artifacts \
   --evidence-policy bad
 ```

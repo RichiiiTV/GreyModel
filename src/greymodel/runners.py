@@ -18,6 +18,7 @@ from .data import (
     load_station_configs_from_index,
     station_config_for_record,
 )
+from .hf_backends import build_huggingface_model_backend
 from .evaluation import (
     benchmark_manifest,
     build_calibration_report,
@@ -27,6 +28,7 @@ from .evaluation import (
     save_predictions,
 )
 from .explainability import build_audit_report, build_explanation_bundle
+from .model_profiles import load_model_profile
 from .recovery import write_failure_bundle
 from .models import build_base_model, build_lite_model
 from .tracking import (
@@ -139,6 +141,25 @@ def _inference_model_for_variant(variant: str, defect_families: Sequence[str]):
     if variant == "lite":
         return LiteModel(num_defect_families=num_defect_families, defect_families=defect_families)
     return BaseModel(num_defect_families=num_defect_families, defect_families=defect_families)
+
+
+def _inference_model_from_profile(
+    *,
+    variant: str,
+    defect_families: Sequence[str],
+    model_profile: str | Path | Mapping[str, Any] | None,
+    model_registry_root: Path | str | None,
+):
+    if model_profile is None:
+        return _inference_model_for_variant(variant, defect_families)
+    profile = load_model_profile(model_profile, registry_root=model_registry_root)
+    return build_huggingface_model_backend(
+        profile,
+        num_defect_families=max(len(defect_families), 1),
+        defect_families=defect_families,
+        num_stations=32,
+        registry_root=model_registry_root,
+    )
 
 
 def _require_fsdp():
@@ -1417,6 +1438,8 @@ def run_benchmark_stage(
     index_path: Optional[Path | str] = None,
     variant: str = "base",
     run_root: Path | str = "artifacts",
+    model_profile: str | Path | Mapping[str, Any] | None = None,
+    model_registry_root: Path | str | None = None,
 ) -> StageResult:
     distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", "single", False)
     run_context = _prepare_run(
@@ -1425,13 +1448,19 @@ def run_benchmark_stage(
         stage="benchmark",
         variant=variant,
         run_root=run_root,
-        payload={},
+        payload={"model_profile": str(model_profile) if model_profile is not None else None},
         context=distributed_context,
     )
     try:
         report = evaluate_predictions(
             load_dataset_manifest(manifest_path),
-            predict_dataset(manifest_path, index_path=index_path, variant=variant),
+            predict_dataset(
+                manifest_path,
+                index_path=index_path,
+                variant=variant,
+                model_profile=model_profile,
+                model_registry_root=model_registry_root,
+            ),
         )
         report_path = write_json(run_context.reports_dir / "benchmark_report.json", report)
         log_metrics(
@@ -1472,6 +1501,8 @@ def run_calibration_stage(
     index_path: Optional[Path | str] = None,
     variant: str = "base",
     run_root: Path | str = "artifacts",
+    model_profile: str | Path | Mapping[str, Any] | None = None,
+    model_registry_root: Path | str | None = None,
 ) -> StageResult:
     distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", "single", False)
     run_context = _prepare_run(
@@ -1480,11 +1511,17 @@ def run_calibration_stage(
         stage="calibrate",
         variant=variant,
         run_root=run_root,
-        payload={},
+        payload={"model_profile": str(model_profile) if model_profile is not None else None},
         context=distributed_context,
     )
     try:
-        predictions = predict_dataset(manifest_path, index_path=index_path, variant=variant)
+        predictions = predict_dataset(
+            manifest_path,
+            index_path=index_path,
+            variant=variant,
+            model_profile=model_profile,
+            model_registry_root=model_registry_root,
+        )
         predictions_path = save_predictions(predictions, run_context.reports_dir / "predictions.jsonl")
         report = build_calibration_report(
             manifest_path=manifest_path,
@@ -1536,6 +1573,8 @@ def run_prediction_stage(
     variant: str = "base",
     run_root: Path | str = "artifacts",
     evidence_policy: str = "bad",
+    model_profile: str | Path | Mapping[str, Any] | None = None,
+    model_registry_root: Path | str | None = None,
 ) -> StageResult:
     distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", "single", False)
     run_context = _prepare_run(
@@ -1544,7 +1583,7 @@ def run_prediction_stage(
         stage="predict",
         variant=variant,
         run_root=run_root,
-        payload={"evidence_policy": evidence_policy},
+        payload={"evidence_policy": evidence_policy, "model_profile": str(model_profile) if model_profile is not None else None},
         context=distributed_context,
     )
     failed_sample_ids: list[str] = []
@@ -1572,6 +1611,8 @@ def run_prediction_stage(
             variant=variant,
             evidence_root=run_context.explanations_dir,
             evidence_policy=evidence_policy,
+            model_profile=model_profile,
+            model_registry_root=model_registry_root,
             on_error=_prediction_error,
             continue_on_error=True,
         )
@@ -1631,6 +1672,8 @@ def run_explain_sample_stage(
     sample_id: Optional[str] = None,
     variant: str = "base",
     run_root: Path | str = "artifacts",
+    model_profile: str | Path | Mapping[str, Any] | None = None,
+    model_registry_root: Path | str | None = None,
 ) -> StageResult:
     distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", "single", False)
     run_context = _prepare_run(
@@ -1639,7 +1682,7 @@ def run_explain_sample_stage(
         stage="explain_sample",
         variant=variant,
         run_root=run_root,
-        payload={"sample_id": sample_id},
+        payload={"sample_id": sample_id, "model_profile": str(model_profile) if model_profile is not None else None},
         context=distributed_context,
     )
     try:
@@ -1659,7 +1702,12 @@ def run_explain_sample_stage(
         )
         station_config = station_config_for_record(record, station_configs)
         defect_families = _load_defect_families(resolved_index)
-        model = _inference_model_for_variant(variant, defect_families)
+        model = _inference_model_from_profile(
+            variant=variant,
+            defect_families=defect_families,
+            model_profile=model_profile,
+            model_registry_root=model_registry_root,
+        )
         sample_dir = ensure_dir(run_context.explanations_dir / record.sample_id.replace("/", "_"))
         bundle = build_explanation_bundle(model, model_input, station_config, sample_dir)
         report_path = write_json(
@@ -1708,6 +1756,8 @@ def run_explain_audit_stage(
     variant: str = "base",
     run_root: Path | str = "artifacts",
     limit: int = 5,
+    model_profile: str | Path | Mapping[str, Any] | None = None,
+    model_registry_root: Path | str | None = None,
 ) -> StageResult:
     distributed_context = DistributedContext(False, 0, 1, 0, "cpu", "gloo", "single", False)
     run_context = _prepare_run(
@@ -1716,12 +1766,17 @@ def run_explain_audit_stage(
         stage="explain_audit",
         variant=variant,
         run_root=run_root,
-        payload={"limit": int(limit)},
+        payload={"limit": int(limit), "model_profile": str(model_profile) if model_profile is not None else None},
         context=distributed_context,
     )
     try:
         defect_families = _load_defect_families(index_path or Path(manifest_path).with_name("dataset_index.json"))
-        model_factory = lambda: _inference_model_for_variant(variant, defect_families)
+        model_factory = lambda: _inference_model_from_profile(
+            variant=variant,
+            defect_families=defect_families,
+            model_profile=model_profile,
+            model_registry_root=model_registry_root,
+        )
         report_path = build_audit_report(
             model_factory,
             manifest_path,

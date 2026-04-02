@@ -15,7 +15,16 @@ from .version import __version__
 
 def _torch_backend_from_model(model):
     backend = getattr(model, "backend", None)
-    return getattr(backend, "model", None)
+    backend_model = getattr(backend, "model", None)
+    if backend_model is not None:
+        return backend_model
+    direct_model = getattr(model, "model", None)
+    if direct_model is not None and (
+        hasattr(direct_model, "screen_forward")
+        or hasattr(getattr(direct_model, "config", None), "num_stations")
+    ):
+        return direct_model
+    return None
 
 
 def _manual_integrated_gradients(torch_model, batch: TensorBatch, steps: int = 16):
@@ -23,7 +32,8 @@ def _manual_integrated_gradients(torch_model, batch: TensorBatch, steps: int = 1
 
     baseline = torch.zeros_like(batch.image)
     total_grads = torch.zeros_like(batch.image)
-    station_ids = batch.station_id % max(torch_model.config.num_stations, 1)
+    num_stations = max(int(getattr(getattr(torch_model, "config", None), "num_stations", 1) or 1), 1)
+    station_ids = batch.station_id % num_stations
     for alpha in torch.linspace(0.0, 1.0, steps, device=batch.image.device):
         scaled = (baseline + alpha * (batch.image - baseline)).detach().requires_grad_(True)
         working_batch = TensorBatch(
@@ -47,7 +57,8 @@ def _captum_integrated_gradients(torch_model, batch: TensorBatch, steps: int = 1
     except ImportError:
         return _manual_integrated_gradients(torch_model, batch, steps=steps), "manual_integrated_gradients"
 
-    station_ids = batch.station_id % max(torch_model.config.num_stations, 1)
+    num_stations = max(int(getattr(getattr(torch_model, "config", None), "num_stations", 1) or 1), 1)
+    station_ids = batch.station_id % num_stations
     geometry_ids = batch.geometry_id
 
     def _expand_batch_dim(tensor, batch_size: int):
@@ -94,6 +105,17 @@ def build_explanation_bundle(
         import torch
 
         torch_model.eval()
+        try:
+            device = next(torch_model.parameters()).device
+        except StopIteration:
+            device = batch.image.device
+        batch = TensorBatch(
+            image=batch.image.to(device),
+            valid_mask=batch.valid_mask.to(device),
+            station_id=batch.station_id.to(device),
+            geometry_id=batch.geometry_id.to(device),
+            metadata=batch.metadata,
+        )
         with torch.enable_grad():
             attribution, attribution_method = _captum_integrated_gradients(torch_model, batch, steps=attribution_steps)
         attribution_np = attribution.detach().cpu().numpy()[0, 0]
@@ -134,6 +156,7 @@ def build_explanation_bundle(
             "top_tiles": top_tiles.tolist(),
             "station_decision": {"reject": bool(decision.reject), "threshold": float(decision.reject_threshold)},
             "attribution_method": attribution_method,
+            "model_metadata": dict(getattr(output, "metadata", {}) or {}),
             "model_version": __version__,
         },
     )

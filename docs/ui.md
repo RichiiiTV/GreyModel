@@ -61,6 +61,7 @@ The UI is:
 - no Docker
 - no auth
 - file-backed
+- workspace-backed via `<run_root>/workspace.json` unless overridden with `--workspace-path`
 
 The UI process always runs locally. Slurm integration only affects the jobs launched from the compute pages.
 
@@ -72,7 +73,7 @@ For Jupyter or HPC use:
 
 ## Pages
 
-### Overview
+### Home
 
 Shows:
 
@@ -80,6 +81,8 @@ Shows:
 - stage, variant, and status
 - latest usable checkpoints
 - recent failure summaries
+- active workspace summary
+- active model profile summary
 
 ### Datasets
 
@@ -89,6 +92,22 @@ Shows:
 - manifest and ontology references
 - station config counts
 - sample preview
+- activation of the current dataset bundle in the workspace
+
+### Models
+
+Shows:
+
+- registered model profiles
+- native GreyModel and Hugging Face model profile metadata
+- profile editing for backend family, task type, native variant, cache policy, and latency target
+- latency benchmark preview
+
+The built-in native profiles are:
+
+- `prod_fast_native`: the production fast path. This is the screen-plus-MIL cascade meant for promotion after latency benchmarking.
+- `review_native_base`: the higher-capacity review model.
+- `review_native_lite`: the compact review model.
 
 ### Train
 
@@ -106,11 +125,17 @@ Each job can run in one of two backends:
 
 The UI never runs the trainer in-process.
 
-### Predict
+### Predict & Review
 
-Provides a manifest-backed prediction form for hierarchical batch inference.
+Provides a manifest-backed preview and review flow for hierarchical inference.
 
-You can use the same local or Slurm backend selection as the training page. Prediction job metadata and logs are written under `<run_root>/ui_jobs/`.
+You can use the same local or Slurm backend selection as the training page for job launches, and the page also supports in-app preview batches using the selected workspace profile. Prediction job metadata and logs are written under `<run_root>/ui_jobs/`.
+
+If the selected profile is `prod_fast_native`, the in-app preview uses the production cascade:
+
+- stage A screens the full frame
+- clearly good samples can exit immediately
+- uncertain or suspicious samples go to the patch/MIL refiner
 
 ### Evaluate
 
@@ -126,6 +151,7 @@ Lets you:
 - launch a single-sample explain command
 - launch an audit-batch explain command
 - browse existing explanation bundles under the run root
+- generate review bundles from the active model profile
 
 Like the training and prediction pages, explain jobs can run locally or via Slurm.
 
@@ -136,6 +162,16 @@ Shows:
 - failure bundle metadata
 - stack traces
 - offending sample ids when available
+
+### Settings
+
+Shows:
+
+- workspace name and storage roots
+- default execution backend
+- Slurm defaults
+- proxy mode and UI theme
+- save/load of workspace-local preferences
 
 ## Data Source
 

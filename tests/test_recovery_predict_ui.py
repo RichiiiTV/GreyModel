@@ -16,8 +16,11 @@ from greymodel import (
     run_prediction_stage,
     run_pretraining_stage,
 )
+from greymodel.data import load_dataset_index, load_dataset_manifest, load_station_configs_from_index, station_config_for_record
 from greymodel.ui import UIExecutionDefaults, build_streamlit_command, launch_streamlit_ui, resolve_ui_proxy_configuration
 from greymodel.ui_app import _launch_managed_job, collect_ui_state, render_app
+from greymodel.ui_models import predict_record_with_profile
+from greymodel.ui_workspace import ModelProfile, load_workspace, save_workspace
 
 
 def _write_sample(root: Path, relative_path: str, image: np.ndarray, sidecar: dict | None = None) -> Path:
@@ -96,26 +99,32 @@ def test_prediction_stage_quarantines_failing_samples(tmp_path: Path, monkeypatc
     assert statuses[0].status == "completed_with_failures"
 
 
-class _FakeSidebar:
+class _FakeContext:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class _FakeStreamlit(_FakeContext):
     def __init__(self, page: str) -> None:
+        self.sidebar = self
         self._page = page
+
+    def set_page_config(self, *args, **kwargs):
+        return None
 
     def title(self, *args, **kwargs):
         return None
 
-    def radio(self, *args, **kwargs):
-        return self._page
-
-    def write(self, *args, **kwargs):
+    def caption(self, *args, **kwargs):
         return None
 
+    def markdown(self, *args, **kwargs):
+        return None
 
-class _FakeStreamlit(types.SimpleNamespace):
-    def __init__(self, page: str) -> None:
-        super().__init__()
-        self.sidebar = _FakeSidebar(page)
-
-    def set_page_config(self, *args, **kwargs):
+    def divider(self, *args, **kwargs):
         return None
 
     def header(self, *args, **kwargs):
@@ -124,30 +133,29 @@ class _FakeStreamlit(types.SimpleNamespace):
     def subheader(self, *args, **kwargs):
         return None
 
+    def metric(self, *args, **kwargs):
+        return None
+
     def info(self, *args, **kwargs):
         return None
 
-    def dataframe(self, *args, **kwargs):
+    def warning(self, *args, **kwargs):
+        return None
+
+    def success(self, *args, **kwargs):
+        return None
+
+    def write(self, *args, **kwargs):
         return None
 
     def json(self, *args, **kwargs):
         return None
 
-    def image(self, *args, **kwargs):
+    def dataframe(self, *args, **kwargs):
         return None
 
-    def selectbox(self, _label, options, **kwargs):
-        if isinstance(options, Path):
-            return options
-        if not options:
-            return None
-        return list(options)[0]
-
-    def text_input(self, _label, value="", **kwargs):
-        return value
-
-    def number_input(self, _label, min_value=0, value=0, **kwargs):
-        return value
+    def image(self, *args, **kwargs):
+        return None
 
     def code(self, *args, **kwargs):
         return None
@@ -155,11 +163,43 @@ class _FakeStreamlit(types.SimpleNamespace):
     def button(self, *args, **kwargs):
         return False
 
-    def success(self, *args, **kwargs):
-        return None
+    def form(self, *args, **kwargs):
+        return _FakeContext()
 
-    def write(self, *args, **kwargs):
-        return None
+    def form_submit_button(self, *args, **kwargs):
+        return False
+
+    def columns(self, spec, *args, **kwargs):
+        count = len(spec) if isinstance(spec, (list, tuple)) else int(spec)
+        return [_FakeStreamlit(self._page) for _ in range(count)]
+
+    def radio(self, _label, options, **kwargs):
+        if _label == "Page":
+            return self._page
+        if not options:
+            return None
+        return list(options)[0]
+
+    def selectbox(self, _label, options, **kwargs):
+        if isinstance(options, Path):
+            return options
+        if not options:
+            return None
+        index = int(kwargs.get("index", 0) or 0)
+        options = list(options)
+        return options[min(max(index, 0), len(options) - 1)]
+
+    def text_input(self, _label, value="", **kwargs):
+        return value
+
+    def text_area(self, _label, value="", **kwargs):
+        return value
+
+    def number_input(self, _label, min_value=0, value=0, **kwargs):
+        return value
+
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
 
 
 def test_ui_dry_run_and_render_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -175,7 +215,7 @@ def test_ui_dry_run_and_render_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert "datasets" in state
     assert state["datasets"]
 
-    for page in ("Overview", "Datasets", "Train", "Predict", "Evaluate", "Explain", "Failures"):
+    for page in ("Home", "Datasets", "Models", "Train", "Runs", "Predict & Review", "Explain", "Failures", "Settings"):
         fake_st = _FakeStreamlit(page)
         monkeypatch.setitem(sys.modules, "streamlit", fake_st)
         render_app(run_root=tmp_path / "runs", data_root=data_root)
@@ -223,6 +263,19 @@ def test_ui_dry_run_carries_slurm_defaults(tmp_path: Path) -> None:
     assert command.index("--server.baseUrlPath=services/greymodel") < command.index("--")
 
 
+def test_ui_dry_run_supports_workspace_path(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace.json"
+    payload = launch_streamlit_ui(
+        dry_run=True,
+        workspace_path=workspace_path,
+        run_root=tmp_path / "runs",
+        data_root=tmp_path / "data",
+    )
+    assert payload["workspace_path"] == str(workspace_path)
+    assert "--workspace-path" in payload["command"]
+    assert str(workspace_path) in payload["command"]
+
+
 def test_ui_slurm_submission_writes_job_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls = []
 
@@ -262,6 +315,39 @@ def test_ui_slurm_submission_writes_job_metadata(tmp_path: Path, monkeypatch: py
     assert "-q" in submit_command and "3h" in submit_command
     assert "--wrap" in submit_command
     assert "torch.distributed.run" in " ".join(payload["command"])
+
+
+def test_workspace_profiles_round_trip(tmp_path: Path) -> None:
+    workspace = load_workspace(run_root=tmp_path / "runs", data_root=tmp_path / "data")
+    workspace.model_profiles["hf_custom"] = ModelProfile(
+        profile_id="hf_custom",
+        display_name="HF Custom",
+        backend_family="hf_classification",
+        task_type="review",
+        model_id="google/vit-base-patch16-224",
+    )
+    path = save_workspace(workspace, tmp_path / "runs" / "workspace.json")
+    loaded = load_workspace(run_root=tmp_path / "runs", data_root=tmp_path / "data", workspace_path=path)
+    assert "hf_custom" in loaded.model_profiles
+    assert loaded.model_profiles["hf_custom"].backend_family == "hf_classification"
+
+
+def test_workspace_default_fast_profile_uses_cascade_runtime(tmp_path: Path) -> None:
+    manifest = _build_manifest(tmp_path)
+    index = load_dataset_index(manifest.with_name("dataset_index.json"))
+    records = load_dataset_manifest(index.manifest_path)
+    workspace = load_workspace(run_root=tmp_path / "runs", data_root=tmp_path / "data")
+
+    profile = workspace.model_profiles["prod_fast_native"]
+    assert profile.native_variant == "fast"
+
+    record = records[0]
+    station_configs = load_station_configs_from_index(index)
+    station_config = station_config_for_record(record, station_configs)
+    prediction = predict_record_with_profile(record, profile, station_config, defect_families=("scratch",))
+
+    assert prediction.primary_label in {"good", "bad"}
+    assert prediction.evidence.metadata["evidence"]["backend"] == "native_fast"
 
 
 def test_resolve_ui_proxy_auto_port_and_service_modes() -> None:

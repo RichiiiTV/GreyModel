@@ -27,7 +27,9 @@ train = [
 ]
 huggingface = [
   "datasets>=2.18",
-  "Pillow>=9.0"
+  "Pillow>=9.0",
+  "transformers>=4.41",
+  "huggingface_hub>=0.24"
 ]
 xai = [
   "captum>=0.7",
@@ -43,7 +45,9 @@ framework = [
   "datasets>=2.18",
   "captum>=0.7",
   "Pillow>=9.0",
-  "streamlit>=1.32"
+  "streamlit>=1.32",
+  "transformers>=4.41",
+  "huggingface_hub>=0.24"
 ]
 
 [tool.setuptools]

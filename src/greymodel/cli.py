@@ -17,6 +17,17 @@ from .data import (
 )
 from .evaluation import benchmark_manifest, build_calibration_report
 from .graphing import export_model_graph
+from .hf_backends import build_huggingface_model_backend
+from .model_profiles import (
+    ModelProfile,
+    delete_model_profile,
+    ensure_default_model_profiles,
+    list_model_profiles,
+    load_model_profile,
+    model_profile_registry_dir,
+    register_model_profile,
+    save_model_profile,
+)
 from .prediction import run_batch_prediction_stage
 from .pretrain_registry import get_pretrain_dataset_preset, list_pretrain_dataset_presets
 from .recovery import ensure_failure_bundle
@@ -89,6 +100,8 @@ def _add_training_arguments(parser: argparse.ArgumentParser, include_checkpoint:
     parser.add_argument("--channels-last", action="store_true")
     parser.add_argument("--ema-decay", type=float, default=0.0)
     parser.add_argument("--compile-model", action="store_true")
+    parser.add_argument("--model-profile", default=None)
+    parser.add_argument("--model-registry-root", default="artifacts/model_profiles")
     if include_checkpoint:
         parser.add_argument("--checkpoint", required=True)
 
@@ -147,7 +160,20 @@ def _training_config_from_args(args: argparse.Namespace) -> TrainingConfig:
         channels_last=bool(args.channels_last),
         ema_decay=args.ema_decay,
         compile_model=bool(args.compile_model),
+        model_profile=args.model_profile,
+        model_registry_root=args.model_registry_root,
     )
+
+
+def _profile_registry_root_from_args(args: argparse.Namespace) -> Path:
+    return model_profile_registry_dir(getattr(args, "model_registry_root", "artifacts/model_profiles"))
+
+
+def _load_profile_for_args(args: argparse.Namespace) -> ModelProfile:
+    profile_reference = getattr(args, "model_profile", None)
+    if profile_reference in (None, ""):
+        raise ValueError("A model profile is required for this command.")
+    return load_model_profile(profile_reference, registry_root=_profile_registry_root_from_args(args))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -222,6 +248,46 @@ def build_parser() -> argparse.ArgumentParser:
     dataset_ontology.add_argument("--index", default=None)
     dataset_ontology.set_defaults(func=_cmd_dataset_ontology)
 
+    models = subparsers.add_parser("models", help="Model registry and backend profiles.")
+    models_sub = models.add_subparsers(dest="models_command", required=True)
+    models_list = models_sub.add_parser("list", help="List registered model profiles.")
+    models_list.add_argument("--registry-root", default="artifacts/model_profiles")
+    models_list.set_defaults(func=_cmd_models_list)
+
+    models_show = models_sub.add_parser("show", help="Inspect a model profile.")
+    models_show.add_argument("profile")
+    models_show.add_argument("--registry-root", default="artifacts/model_profiles")
+    models_show.set_defaults(func=_cmd_models_show)
+
+    models_register = models_sub.add_parser("register", help="Register or update a model profile.")
+    models_register.add_argument("profile_id")
+    models_register.add_argument("--backend-family", choices=("native", "huggingface"), default="huggingface")
+    models_register.add_argument("--task-type", choices=("native", "classification", "detection", "segmentation"), default="classification")
+    models_register.add_argument("--model-id", default=None)
+    models_register.add_argument("--local-path", default=None)
+    models_register.add_argument("--revision", default=None)
+    models_register.add_argument("--cache-dir", default=None)
+    models_register.add_argument("--native-variant", choices=("fast", "base", "lite"), default="base")
+    models_register.add_argument("--runtime-engine", default="pytorch")
+    models_register.add_argument("--latency-target-ms", type=float, default=None)
+    models_register.add_argument("--reject-threshold", type=float, default=0.5)
+    models_register.add_argument("--uncertainty-low", type=float, default=0.35)
+    models_register.add_argument("--uncertainty-high", type=float, default=0.65)
+    models_register.add_argument("--label-mapping-json", default="{}")
+    models_register.add_argument("--defect-family-mapping-json", default="{}")
+    models_register.add_argument("--good-labels", nargs="+", default=("good", "ok", "pass"))
+    models_register.add_argument("--bad-labels", nargs="+", default=("bad", "reject", "ng"))
+    models_register.add_argument("--grayscale-mode", default="replicate_rgb")
+    models_register.add_argument("--evidence-policy", default="bad")
+    models_register.add_argument("--metadata-json", default="{}")
+    models_register.add_argument("--registry-root", default="artifacts/model_profiles")
+    models_register.set_defaults(func=_cmd_models_register)
+
+    models_delete = models_sub.add_parser("delete", help="Delete a registered model profile.")
+    models_delete.add_argument("profile")
+    models_delete.add_argument("--registry-root", default="artifacts/model_profiles")
+    models_delete.set_defaults(func=_cmd_models_delete)
+
     train = subparsers.add_parser("train", help="Staged training and calibration.")
     train_sub = train.add_subparsers(dest="train_command", required=True)
     for name, handler in (
@@ -242,6 +308,8 @@ def build_parser() -> argparse.ArgumentParser:
     eval_benchmark.add_argument("--index", default=None)
     eval_benchmark.add_argument("--variant", choices=("base", "lite"), default="base")
     eval_benchmark.add_argument("--output-path", default=None)
+    eval_benchmark.add_argument("--model-profile", default=None)
+    eval_benchmark.add_argument("--model-registry-root", default="artifacts/model_profiles")
     eval_benchmark.set_defaults(func=_cmd_eval_benchmark)
 
     eval_threshold = eval_sub.add_parser("threshold-sweep")
@@ -249,6 +317,8 @@ def build_parser() -> argparse.ArgumentParser:
     eval_threshold.add_argument("--index", default=None)
     eval_threshold.add_argument("--variant", choices=("base", "lite"), default="base")
     eval_threshold.add_argument("--output-path", default=None)
+    eval_threshold.add_argument("--model-profile", default=None)
+    eval_threshold.add_argument("--model-registry-root", default="artifacts/model_profiles")
     eval_threshold.set_defaults(func=_cmd_eval_threshold_sweep)
 
     eval_calibration = eval_sub.add_parser("calibration")
@@ -256,6 +326,8 @@ def build_parser() -> argparse.ArgumentParser:
     eval_calibration.add_argument("--index", default=None)
     eval_calibration.add_argument("--predictions-path", default=None)
     eval_calibration.add_argument("--output-path", default=None)
+    eval_calibration.add_argument("--model-profile", default=None)
+    eval_calibration.add_argument("--model-registry-root", default="artifacts/model_profiles")
     eval_calibration.set_defaults(func=_cmd_eval_calibration)
 
     eval_compare = eval_sub.add_parser("compare")
@@ -281,6 +353,8 @@ def build_parser() -> argparse.ArgumentParser:
     explain_sample.add_argument("--sample-id", default=None)
     explain_sample.add_argument("--variant", choices=("base", "lite"), default="base")
     explain_sample.add_argument("--output-dir", default=str(Path("artifacts") / "sample_bundle"))
+    explain_sample.add_argument("--model-profile", default=None)
+    explain_sample.add_argument("--model-registry-root", default="artifacts/model_profiles")
     explain_sample.set_defaults(func=_cmd_explain_sample)
 
     explain_audit = explain_sub.add_parser("audit")
@@ -289,6 +363,8 @@ def build_parser() -> argparse.ArgumentParser:
     explain_audit.add_argument("--variant", choices=("base", "lite"), default="base")
     explain_audit.add_argument("--output-dir", default=str(Path("artifacts") / "audit"))
     explain_audit.add_argument("--limit", type=int, default=5)
+    explain_audit.add_argument("--model-profile", default=None)
+    explain_audit.add_argument("--model-registry-root", default="artifacts/model_profiles")
     explain_audit.set_defaults(func=_cmd_explain_audit)
 
     predict = subparsers.add_parser("predict", help="Batch hierarchical prediction over a manifest or image folder.")
@@ -304,12 +380,15 @@ def build_parser() -> argparse.ArgumentParser:
     predict.add_argument("--product-family", default="unknown")
     predict.add_argument("--geometry-mode", choices=("auto", "rect", "square"), default="auto")
     predict.add_argument("--defect-family", action="append", dest="defect_families", default=None)
+    predict.add_argument("--model-profile", default=None)
+    predict.add_argument("--model-registry-root", default="artifacts/model_profiles")
     predict.set_defaults(func=_cmd_predict)
 
     ui = subparsers.add_parser("ui", help="Launch the local Streamlit framework UI.")
     ui.add_argument("--run-root", default="artifacts")
     ui.add_argument("--data-root", default="data")
     ui.add_argument("--dataset-root", dest="data_root")
+    ui.add_argument("--workspace-path", default=None)
     ui.add_argument("--bind-address", default=None)
     ui.add_argument("--host", dest="bind_address", default=None)
     ui.add_argument("--bind-port", type=int, default=None)
@@ -413,6 +492,53 @@ def _cmd_dataset_ontology(args: argparse.Namespace):
     return read_json(Path(index.ontology_path))
 
 
+def _cmd_models_list(args: argparse.Namespace):
+    profiles = ensure_default_model_profiles(args.registry_root)
+    return [profile.to_dict() for profile in profiles]
+
+
+def _cmd_models_show(args: argparse.Namespace):
+    profile = load_model_profile(args.profile, registry_root=args.registry_root)
+    return profile.to_dict()
+
+
+def _cmd_models_register(args: argparse.Namespace):
+    label_mapping = json.loads(args.label_mapping_json)
+    defect_family_mapping = json.loads(args.defect_family_mapping_json)
+    metadata = json.loads(args.metadata_json)
+    if args.backend_family == "native":
+        metadata = {**dict(metadata), "variant": args.native_variant}
+    if args.latency_target_ms is not None:
+        metadata = {**dict(metadata), "latency_target_ms": float(args.latency_target_ms)}
+    profile = ModelProfile(
+        profile_id=args.profile_id,
+        backend_family=args.backend_family,
+        task_type=args.task_type,
+        model_id=args.model_id,
+        local_path=args.local_path,
+        revision=args.revision,
+        cache_dir=args.cache_dir,
+        runtime_engine=args.runtime_engine,
+        reject_threshold=args.reject_threshold,
+        uncertainty_low=args.uncertainty_low,
+        uncertainty_high=args.uncertainty_high,
+        label_mapping=label_mapping,
+        defect_family_mapping=defect_family_mapping,
+        good_labels=tuple(args.good_labels),
+        bad_labels=tuple(args.bad_labels),
+        grayscale_mode=args.grayscale_mode,
+        evidence_policy=args.evidence_policy,
+        metadata=metadata,
+    )
+    register_model_profile(profile, args.registry_root)
+    return profile.to_dict()
+
+
+def _cmd_models_delete(args: argparse.Namespace):
+    deleted = delete_model_profile(args.registry_root, args.profile)
+    return {"profile": args.profile, "deleted": deleted, "registry_root": str(args.registry_root)}
+
+
 def _cmd_train_pretrain(args: argparse.Namespace):
     return run_pretraining_stage(
         manifest_path=args.manifest,
@@ -479,13 +605,32 @@ def _cmd_train_calibrate(args: argparse.Namespace):
 
 def _cmd_eval_benchmark(args: argparse.Namespace):
     if args.output_path:
-        return benchmark_manifest(args.manifest, index_path=args.index, variant=args.variant, output_path=args.output_path)
-    result = run_benchmark_stage(args.manifest, index_path=args.index, variant=args.variant)
+        return benchmark_manifest(
+            args.manifest,
+            index_path=args.index,
+            variant=args.variant,
+            output_path=args.output_path,
+            model_profile=args.model_profile,
+            model_registry_root=args.model_registry_root,
+        )
+    result = run_benchmark_stage(
+        args.manifest,
+        index_path=args.index,
+        variant=args.variant,
+        model_profile=args.model_profile,
+        model_registry_root=args.model_registry_root,
+    )
     return {"report_path": str(result.report_path), "run_dir": str(result.run_dir)}
 
 
 def _cmd_eval_threshold_sweep(args: argparse.Namespace):
-    report = benchmark_manifest(args.manifest, index_path=args.index, variant=args.variant)
+    report = benchmark_manifest(
+        args.manifest,
+        index_path=args.index,
+        variant=args.variant,
+        model_profile=args.model_profile,
+        model_registry_root=args.model_registry_root,
+    )
     payload = report["threshold_sweep"]
     if args.output_path:
         write_json(Path(args.output_path), payload)
@@ -499,6 +644,8 @@ def _cmd_eval_calibration(args: argparse.Namespace):
         predictions_path=args.predictions_path,
         index_path=args.index,
         output_path=output_path,
+        model_profile=args.model_profile,
+        model_registry_root=args.model_registry_root,
     )
 
 
@@ -524,6 +671,8 @@ def _cmd_explain_sample(args: argparse.Namespace):
         sample_id=args.sample_id,
         variant=args.variant,
         run_root=args.output_dir,
+        model_profile=args.model_profile,
+        model_registry_root=args.model_registry_root,
     )
     payload = {"report_path": str(result.report_path), "run_dir": str(result.run_dir)}
     payload.update(dict(result.extra_paths or {}))
@@ -537,6 +686,8 @@ def _cmd_explain_audit(args: argparse.Namespace):
         variant=args.variant,
         run_root=args.output_dir,
         limit=args.limit,
+        model_profile=args.model_profile,
+        model_registry_root=args.model_registry_root,
     )
     return {"report_path": str(result.report_path), "run_dir": str(result.run_dir)}
 
@@ -554,6 +705,8 @@ def _cmd_predict(args: argparse.Namespace):
             geometry_mode=args.geometry_mode,
             defect_families=tuple(args.defect_families or ()),
             evidence_policy=args.evidence_policy,
+            model_profile=args.model_profile,
+            model_registry_root=args.model_registry_root,
         )
     else:
         result = run_prediction_stage(
@@ -562,6 +715,8 @@ def _cmd_predict(args: argparse.Namespace):
             variant=args.variant,
             run_root=args.run_root,
             evidence_policy=args.evidence_policy,
+            model_profile=args.model_profile,
+            model_registry_root=args.model_registry_root,
         )
     payload = {"run_dir": str(result.run_dir)}
     if result.report_path is not None:
@@ -574,6 +729,7 @@ def _cmd_ui(args: argparse.Namespace):
     return launch_streamlit_ui(
         run_root=args.run_root,
         data_root=args.data_root,
+        workspace_path=args.workspace_path,
         bind_address=args.bind_address,
         bind_port=args.bind_port,
         headless=not bool(args.browser),
