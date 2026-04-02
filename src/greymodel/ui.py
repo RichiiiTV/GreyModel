@@ -105,6 +105,15 @@ def _join_public_location(base: str | None, route_path: str) -> str:
     return _normalize_url_path(normalized_base, trailing_slash=True) + normalized_route.lstrip("/")
 
 
+def _replace_absolute_url_path(base: str | None, route_path: str) -> str:
+    normalized_route = _normalize_url_path(route_path, trailing_slash=True)
+    normalized_base = _normalized_optional_text(base)
+    if normalized_base is None or not _is_absolute_url(normalized_base):
+        return normalized_route
+    parsed = urlparse(normalized_base)
+    return urlunparse(parsed._replace(path=normalized_route, params="", query="", fragment=""))
+
+
 def _extract_browser_target(public_base_url: str | None) -> tuple[str | None, int | None]:
     normalized = _normalized_optional_text(public_base_url)
     if normalized is None or not _is_absolute_url(normalized):
@@ -119,13 +128,6 @@ def _extract_browser_target(public_base_url: str | None) -> tuple[str | None, in
     if parsed.scheme == "http":
         return parsed.hostname, 80
     return parsed.hostname, None
-
-
-def _infer_notebook_base_path(env: Mapping[str, str]) -> str:
-    for key in ("NB_PREFIX", "JUPYTERHUB_SERVICE_PREFIX", "JUPYTER_BASE_URL", "JUPYTERHUB_BASE_URL"):
-        if _normalized_optional_text(env.get(key)):
-            return _normalize_url_path(env.get(key), trailing_slash=True)
-    return "/"
 
 
 def _detect_proxy_mode(proxy_mode: str, env: Mapping[str, str]) -> str:
@@ -177,15 +179,8 @@ def resolve_ui_proxy_configuration(
         resolved_base_url_path = requested_base_url_path or env_service_prefix or (parsed_service_url.path if parsed_service_url else None)
         display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True)
     elif detected_mode == "jupyter_port":
-        # Streamlit needs the full proxy prefix preserved so websocket and
-        # static routes stay under the notebook proxy path instead of root.
-        resolved_base_url_path = requested_base_url_path or posixpath.join(
-            _infer_notebook_base_path(resolved_env),
-            "proxy",
-            "absolute",
-            str(final_bind_port),
-        )
-        display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True)
+        resolved_base_url_path = requested_base_url_path
+        display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True) if resolved_base_url_path else "/proxy/%d/" % int(final_bind_port)
     else:
         resolved_base_url_path = requested_base_url_path
         display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True) if resolved_base_url_path else "/"
@@ -209,8 +204,13 @@ def resolve_ui_proxy_configuration(
         local_url += streamlit_base_url_path.rstrip("/") + "/"
 
     normalized_public_base_url = _normalized_optional_text(public_base_url)
-    if detected_mode in {"jupyter_service", "jupyter_port"}:
+    if detected_mode == "jupyter_service":
         proxy_url = _join_public_location(normalized_public_base_url, display_path) if normalized_public_base_url else display_path
+    elif detected_mode == "jupyter_port":
+        if requested_base_url_path:
+            proxy_url = _join_public_location(normalized_public_base_url, display_path) if normalized_public_base_url else display_path
+        else:
+            proxy_url = _replace_absolute_url_path(normalized_public_base_url, display_path)
     else:
         proxy_url = _join_public_location(normalized_public_base_url, display_path) if normalized_public_base_url else local_url
 

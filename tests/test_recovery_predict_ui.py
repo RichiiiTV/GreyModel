@@ -379,8 +379,8 @@ def test_resolve_ui_proxy_auto_port_and_service_modes() -> None:
     )
     assert notebook.proxy_mode == "jupyter_port"
     assert notebook.bind_address == "0.0.0.0"
-    assert notebook.base_url_path == "hub/session/proxy/absolute/8899"
-    assert notebook.proxy_url == "/hub/session/proxy/absolute/8899/"
+    assert notebook.base_url_path == ""
+    assert notebook.proxy_url == "/proxy/8899/"
 
     service = resolve_ui_proxy_configuration(
         proxy_mode="auto",
@@ -426,9 +426,26 @@ def test_build_streamlit_command_can_disable_cors_and_xsrf() -> None:
         env={"JPY_PARENT_PID": "1", "JUPYTERHUB_SERVICE_PREFIX": "/hub/session/"},
     )
 
-    assert "--server.baseUrlPath=hub/session/proxy/absolute/8501" in command
+    assert not any(token.startswith("--server.baseUrlPath=") for token in command)
     assert "--server.enableCORS=false" in command
     assert "--server.enableXsrfProtection=false" in command
+
+
+def test_ui_dry_run_jupyter_port_uses_generic_proxy_route() -> None:
+    payload = launch_streamlit_ui(
+        dry_run=True,
+        proxy_mode="jupyter_port",
+        public_base_url="https://cluster.example.org/user/ricardo/",
+        bind_port=9010,
+        env={
+            "JPY_PARENT_PID": "1",
+            "JUPYTERHUB_SERVICE_PREFIX": "/hub/session/",
+        },
+    )
+
+    assert payload["base_url_path"] == ""
+    assert payload["proxy_url"] == "https://cluster.example.org/proxy/9010/"
+    assert not any(token.startswith("--server.baseUrlPath=") for token in payload["command"])
 
 
 def test_ui_dry_run_prefers_explicit_proxy_override_and_prints_url(capsys: pytest.CaptureFixture[str]) -> None:

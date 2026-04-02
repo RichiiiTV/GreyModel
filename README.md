@@ -191,7 +191,7 @@ python -m greymodel ui \
   --print-url
 ```
 
-If the page loads but the browser reports `/_stcore/stream` websocket failures behind a notebook or HPC proxy, rerun once with the proxy-compatible safety flags. `jupyter_port` now uses Jupyter's `/proxy/absolute/<port>/` route so Streamlit keeps websocket and static paths under the proxied prefix:
+If the page loads but the browser reports `/_stcore/stream` websocket failures behind a notebook or HPC proxy, rerun once with the proxy-compatible safety flags. In notebook-style proxy mode the launcher again uses the generic `/proxy/<port>/` route and does not auto-inject `server.baseUrlPath` unless you explicitly pass one:
 
 ```bash
 python -m greymodel ui \
