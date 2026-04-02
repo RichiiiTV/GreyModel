@@ -10,6 +10,21 @@ python -m greymodel ui --run-root artifacts --data-root data
 
 Start the UI in an HPC or Jupyter notebook session:
 
+Direct raw-host HPC:
+
+```bash
+python -m greymodel ui \
+  --run-root artifacts \
+  --data-root data \
+  --bind-address 0.0.0.0 \
+  --bind-port 8501 \
+  --proxy-mode off \
+  --public-base-url http://<ip>:8501/ \
+  --print-url
+```
+
+Use this mode when the UI is reachable directly as `http://<ip>:<port>/` and not through a notebook proxy. `--public-base-url` is optional for serving, but recommended if you want `--print-url` and dry-run output to show the externally reachable host instead of `127.0.0.1`.
+
 Notebook-style arbitrary port proxy:
 
 ```bash
@@ -82,6 +97,7 @@ The UI process always runs locally. Slurm integration only affects the jobs laun
 
 For Jupyter or HPC use:
 
+- `proxy_mode off` is the direct raw-host path for `http://<ip>:<port>/`
 - `jupyter_port` mode assumes the notebook server exposes arbitrary ports through `/proxy/<port>/` and keeps the Streamlit launch config minimal by default
 - `jupyter_service` mode assumes the UI is mounted under a stable prefix and therefore needs `server.baseUrlPath`
 - `auto` prefers service-prefix routing when `JUPYTERHUB_SERVICE_URL` is present, otherwise it falls back to notebook-style port proxy detection

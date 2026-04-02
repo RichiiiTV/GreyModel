@@ -220,6 +220,27 @@ def test_patch_pretrain_sampler_is_mask_aware() -> None:
     assert float(sampled.valid_mask.mean().item()) > 0.2
 
 
+def test_patch_pretrain_sampler_resizes_multiscale_crops_to_common_shape() -> None:
+    batch = TensorBatch(
+        image=torch.zeros((1, 1, 128, 128), dtype=torch.float32),
+        valid_mask=torch.ones((1, 1, 128, 128), dtype=torch.float32),
+        station_id=torch.zeros((1,), dtype=torch.long),
+        geometry_id=torch.zeros((1,), dtype=torch.long),
+        metadata={},
+    )
+
+    sampled = sample_pretrain_crops(
+        batch,
+        TrainingConfig(pretrain_crop_size=64, pretrain_num_crops=2, pretrain_crop_scales=(0.75, 1.0)),
+    )
+
+    assert sampled.image.shape == (2, 1, 64, 64)
+    assert sampled.valid_mask.shape == (2, 1, 64, 64)
+    assert set(torch.unique(sampled.valid_mask).tolist()).issubset({0.0, 1.0})
+    assert sampled.metadata["pretrain_requested_crop_scales"] == [0.75, 1.0]
+    assert sampled.metadata["pretrain_final_crop_size"] == 64
+
+
 def test_resolve_strategy_prefers_fsdp_on_cuda_and_ddp_on_cpu() -> None:
     fsdp = _resolve_strategy(TrainingConfig(distributed_strategy="fsdp"), enabled=True, device=torch.device("cuda"))
     ddp = _resolve_strategy(TrainingConfig(distributed_strategy="fsdp"), enabled=True, device=torch.device("cpu"))

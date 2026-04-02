@@ -101,6 +101,8 @@ python -m greymodel models list
 python -m greymodel models show hf_cls
 ```
 
+The CLI now prints structured command results as pretty JSON by default, so `models list`, `models show`, evaluation commands, and other non-UI commands display their payloads directly in the terminal.
+
 Pretrain:
 
 This runs self-supervised public-data pretraining. The model learns generic grayscale defect structure before it ever sees your production labels.
@@ -178,7 +180,22 @@ python -m greymodel ui --run-root artifacts --data-root data
 
 HPC or Jupyter-proxied UI:
 
-This keeps the UI process local to your notebook or HPC session, but resolves the externally reachable URL through either Jupyter port proxying or JupyterHub service-prefix routing. `--print-url` prints the proxied URL first so you can open the correct route instead of guessing the raw port.
+For raw HPC access over `http://<ip>:<port>/`, use direct host mode. This is the recommended path when your cluster exposes the Streamlit port directly rather than through Jupyter routing. If you want `--print-url` to show the externally reachable host instead of `127.0.0.1`, also pass `--public-base-url`.
+
+Direct raw-host HPC:
+
+```bash
+python -m greymodel ui \
+  --run-root artifacts \
+  --data-root data \
+  --bind-address 0.0.0.0 \
+  --bind-port 8501 \
+  --proxy-mode off \
+  --public-base-url http://<ip>:8501/ \
+  --print-url
+```
+
+If your HPC session is actually routed through a notebook proxy, use one of the proxy-aware modes below instead. `--print-url` prints the resolved public URL first so you can open the correct route instead of guessing.
 
 Notebook-style arbitrary port proxy:
 

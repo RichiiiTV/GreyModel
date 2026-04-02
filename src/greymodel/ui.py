@@ -192,10 +192,6 @@ def resolve_ui_proxy_configuration(
         browser_host = parsed_service_url.hostname
     if browser_port is None and detected_mode == "jupyter_service" and parsed_service_url is not None and parsed_service_url.port is not None:
         browser_port = int(parsed_service_url.port)
-    if browser_host is None and detected_mode == "off":
-        browser_host = local_display_host
-    if browser_port is None and detected_mode == "off":
-        browser_port = final_bind_port
     final_browser_server_address = _normalized_optional_text(browser_server_address) or browser_host
     final_browser_server_port = int(browser_server_port) if browser_server_port is not None else browser_port
 

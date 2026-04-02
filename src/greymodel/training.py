@@ -214,8 +214,23 @@ def sample_pretrain_crops(model_input: TensorBatch, config: TrainingConfig) -> T
             y1, x1 = _select_crop_window(mask_slice[0], crop_size, config.pretrain_min_valid_fraction)
             y2 = y1 + crop_size
             x2 = x1 + crop_size
-            crop_tensors.append(image_slice[:, :, y1:y2, x1:x2])
-            crop_masks.append(mask_slice[:, :, y1:y2, x1:x2])
+            image_crop = image_slice[:, :, y1:y2, x1:x2]
+            mask_crop = mask_slice[:, :, y1:y2, x1:x2]
+            if image_crop.shape[-2:] != (base_crop_size, base_crop_size):
+                image_crop = torch.nn.functional.interpolate(
+                    image_crop,
+                    size=(base_crop_size, base_crop_size),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                mask_crop = torch.nn.functional.interpolate(
+                    mask_crop.float(),
+                    size=(base_crop_size, base_crop_size),
+                    mode="nearest",
+                )
+                mask_crop = (mask_crop > 0.5).to(mask_slice.dtype)
+            crop_tensors.append(image_crop)
+            crop_masks.append(mask_crop)
             crop_station_ids.append(model_input.station_id[batch_index : batch_index + 1])
             crop_geometry_ids.append(model_input.geometry_id[batch_index : batch_index + 1])
 
@@ -229,7 +244,9 @@ def sample_pretrain_crops(model_input: TensorBatch, config: TrainingConfig) -> T
         metadata={
             **metadata,
             "pretrain_crop_size": base_crop_size,
+            "pretrain_final_crop_size": base_crop_size,
             "pretrain_num_crops": crop_count,
+            "pretrain_requested_crop_scales": [float(value) for value in crop_sizes],
             "pretrain_crop_scales": [float(value) for value in crop_sizes],
         },
     )

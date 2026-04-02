@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 import sys
 import types
 
@@ -369,8 +370,8 @@ def test_resolve_ui_proxy_auto_port_and_service_modes() -> None:
     assert off.bind_address == "127.0.0.1"
     assert off.base_url_path == ""
     assert off.proxy_url == off.local_url
-    assert off.browser_server_address == "127.0.0.1"
-    assert off.browser_server_port == 8501
+    assert off.browser_server_address is None
+    assert off.browser_server_port is None
 
     notebook = resolve_ui_proxy_configuration(
         proxy_mode="auto",
@@ -448,6 +449,24 @@ def test_ui_dry_run_jupyter_port_uses_generic_proxy_route() -> None:
     assert not any(token.startswith("--server.baseUrlPath=") for token in payload["command"])
 
 
+def test_ui_dry_run_off_mode_supports_raw_host_public_url() -> None:
+    payload = launch_streamlit_ui(
+        dry_run=True,
+        proxy_mode="off",
+        bind_address="0.0.0.0",
+        bind_port=8501,
+        public_base_url="http://10.20.30.40:8501/",
+    )
+
+    assert payload["proxy_mode"] == "off"
+    assert payload["base_url_path"] == ""
+    assert payload["local_url"] == "http://127.0.0.1:8501/"
+    assert payload["proxy_url"] == "http://10.20.30.40:8501/"
+    assert payload["browser_server_address"] == "10.20.30.40"
+    assert payload["browser_server_port"] == 8501
+    assert not any(token.startswith("--server.baseUrlPath=") for token in payload["command"])
+
+
 def test_ui_dry_run_prefers_explicit_proxy_override_and_prints_url(capsys: pytest.CaptureFixture[str]) -> None:
     payload = launch_streamlit_ui(
         dry_run=True,
@@ -468,3 +487,53 @@ def test_ui_dry_run_prefers_explicit_proxy_override_and_prints_url(capsys: pytes
     assert payload["base_url_path"] == "services/explicit"
     assert payload["proxy_url"] == "https://cluster.example.org/hub/session/services/explicit/"
     assert "https://cluster.example.org/hub/session/services/explicit/" in captured.out
+
+
+def test_python_module_entrypoint_prints_models_list_json(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    registry_root = tmp_path / "profiles"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "greymodel",
+            "models",
+            "list",
+            "--registry-root",
+            str(registry_root),
+        ],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert isinstance(payload, list)
+    assert any(row["profile_id"] == "prod_fast_native" for row in payload)
+
+
+def test_python_module_entrypoint_prints_ui_dry_run_json(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "greymodel",
+            "ui",
+            "--run-root",
+            str(tmp_path / "runs"),
+            "--data-root",
+            str(tmp_path / "data"),
+            "--dry-run",
+        ],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["proxy_mode"] == "off"
