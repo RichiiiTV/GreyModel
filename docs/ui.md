@@ -34,7 +34,7 @@ python -m greymodel ui \
   --print-url
 ```
 
-These flags are intentionally explicit. They are meant for notebook or HPC proxy environments where the proxy path or origin handling breaks Streamlit’s websocket negotiation.
+These flags are intentionally explicit. They are meant for notebook or HPC proxy environments where the proxy path or origin handling breaks Streamlit's websocket negotiation. In `jupyter_port` mode the UI now uses the generic `/proxy/absolute/<port>/` route so websocket and static paths stay under the proxied prefix.
 
 JupyterHub service-prefix routing:
 
@@ -82,7 +82,7 @@ The UI process always runs locally. Slurm integration only affects the jobs laun
 
 For Jupyter or HPC use:
 
-- `jupyter_port` mode assumes the notebook server proxies arbitrary ports like `/proxy/<port>/` and strips that prefix before forwarding
+- `jupyter_port` mode assumes the notebook server exposes arbitrary ports through `/proxy/absolute/<port>/` so the app keeps the full proxy prefix
 - `jupyter_service` mode assumes the UI is mounted under a stable prefix and therefore needs `server.baseUrlPath`
 - `auto` prefers service-prefix routing when `JUPYTERHUB_SERVICE_URL` is present, otherwise it falls back to notebook-style port proxy detection
 

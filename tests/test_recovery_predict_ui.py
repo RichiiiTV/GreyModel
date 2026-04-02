@@ -375,12 +375,12 @@ def test_resolve_ui_proxy_auto_port_and_service_modes() -> None:
     notebook = resolve_ui_proxy_configuration(
         proxy_mode="auto",
         bind_port=8899,
-        env={"JPY_PARENT_PID": "1", "JUPYTERHUB_SERVICE_PREFIX": "/user/ricardo/"},
+        env={"JPY_PARENT_PID": "1", "JUPYTERHUB_SERVICE_PREFIX": "/hub/session/"},
     )
     assert notebook.proxy_mode == "jupyter_port"
     assert notebook.bind_address == "0.0.0.0"
-    assert notebook.base_url_path == "user/ricardo/proxy/8899"
-    assert notebook.proxy_url == "/user/ricardo/proxy/8899/"
+    assert notebook.base_url_path == "hub/session/proxy/absolute/8899"
+    assert notebook.proxy_url == "/hub/session/proxy/absolute/8899/"
 
     service = resolve_ui_proxy_configuration(
         proxy_mode="auto",
@@ -423,10 +423,10 @@ def test_build_streamlit_command_can_disable_cors_and_xsrf() -> None:
         bind_port=8501,
         enable_cors=False,
         enable_xsrf_protection=False,
-        env={"JPY_PARENT_PID": "1", "JUPYTERHUB_SERVICE_PREFIX": "/user/ricardo/"},
+        env={"JPY_PARENT_PID": "1", "JUPYTERHUB_SERVICE_PREFIX": "/hub/session/"},
     )
 
-    assert "--server.baseUrlPath=user/ricardo/proxy/8501" in command
+    assert "--server.baseUrlPath=hub/session/proxy/absolute/8501" in command
     assert "--server.enableCORS=false" in command
     assert "--server.enableXsrfProtection=false" in command
 
@@ -436,7 +436,7 @@ def test_ui_dry_run_prefers_explicit_proxy_override_and_prints_url(capsys: pytes
         dry_run=True,
         print_url=True,
         proxy_mode="auto",
-        public_base_url="https://cluster.example.org/user/ricardo/",
+        public_base_url="https://cluster.example.org/hub/session/",
         bind_port=9010,
         base_url_path="/services/explicit/",
         env={
@@ -449,5 +449,5 @@ def test_ui_dry_run_prefers_explicit_proxy_override_and_prints_url(capsys: pytes
     captured = capsys.readouterr()
     assert payload["proxy_mode"] == "jupyter_service"
     assert payload["base_url_path"] == "services/explicit"
-    assert payload["proxy_url"] == "https://cluster.example.org/user/ricardo/services/explicit/"
-    assert "https://cluster.example.org/user/ricardo/services/explicit/" in captured.out
+    assert payload["proxy_url"] == "https://cluster.example.org/hub/session/services/explicit/"
+    assert "https://cluster.example.org/hub/session/services/explicit/" in captured.out

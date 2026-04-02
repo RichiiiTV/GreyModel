@@ -177,7 +177,14 @@ def resolve_ui_proxy_configuration(
         resolved_base_url_path = requested_base_url_path or env_service_prefix or (parsed_service_url.path if parsed_service_url else None)
         display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True)
     elif detected_mode == "jupyter_port":
-        resolved_base_url_path = requested_base_url_path or posixpath.join(_infer_notebook_base_path(resolved_env), "proxy", str(final_bind_port))
+        # Streamlit needs the full proxy prefix preserved so websocket and
+        # static routes stay under the notebook proxy path instead of root.
+        resolved_base_url_path = requested_base_url_path or posixpath.join(
+            _infer_notebook_base_path(resolved_env),
+            "proxy",
+            "absolute",
+            str(final_bind_port),
+        )
         display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True)
     else:
         resolved_base_url_path = requested_base_url_path
