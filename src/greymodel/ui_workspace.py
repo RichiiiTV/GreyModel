@@ -87,6 +87,7 @@ class WorkspaceConfig:
     run_root: str = "artifacts"
     data_root: str = "data"
     cache_root: str = ".cache/greymodel"
+    ui_mode: str = "vision_engineer"
     active_dataset_index: Optional[str] = None
     active_manifest: Optional[str] = None
     active_model_profile: Optional[str] = None
@@ -212,6 +213,7 @@ def default_workspace_config(run_root: Path | str = "artifacts", data_root: Path
         run_root=str(run_root),
         data_root=str(data_root),
         cache_root=str(Path(run_root) / ".cache"),
+        ui_mode="vision_engineer",
         active_model_profile="prod_fast_native",
         default_execution_backend="local",
         slurm_cpus=8,
@@ -263,6 +265,7 @@ def _workspace_from_payload(payload: Mapping[str, Any], *, run_root: Path | str,
         run_root=str(payload.get("run_root", run_root)),
         data_root=str(payload.get("data_root", data_root)),
         cache_root=str(payload.get("cache_root", Path(run_root) / ".cache")),
+        ui_mode=str(payload.get("ui_mode", "vision_engineer")),
         active_dataset_index=payload.get("active_dataset_index"),
         active_manifest=payload.get("active_manifest"),
         active_model_profile=payload.get("active_model_profile"),

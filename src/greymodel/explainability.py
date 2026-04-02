@@ -13,6 +13,13 @@ from .utils import ensure_dir, save_array_artifact, write_json
 from .version import __version__
 
 
+def _image_artifact_path(artifact: Dict[str, str], label: str) -> Path:
+    for key in ("png", "jpg", "jpeg", "bmp", "tif", "tiff", "pgm"):
+        if key in artifact:
+            return Path(artifact[key])
+    raise ValueError("Expected an image artifact for %s, but only found %s." % (label, sorted(artifact.keys())))
+
+
 def _torch_backend_from_model(model):
     backend = getattr(model, "backend", None)
     backend_model = getattr(backend, "model", None)
@@ -145,6 +152,12 @@ def build_explanation_bundle(
     heatmap_artifact = save_array_artifact(output_dir / "defect_heatmap", heatmap)
     local_heatmap_artifact = save_array_artifact(output_dir / "local_heatmap", local_heatmap)
     global_heatmap_artifact = save_array_artifact(output_dir / "global_heatmap", global_heatmap)
+    image_path = _image_artifact_path(image_artifact, "original_image")
+    valid_mask_path = _image_artifact_path(mask_artifact, "valid_mask")
+    attribution_path = _image_artifact_path(attribution_artifact, "attribution")
+    heatmap_path = _image_artifact_path(heatmap_artifact, "defect_heatmap")
+    local_heatmap_path = _image_artifact_path(local_heatmap_artifact, "local_heatmap")
+    global_heatmap_path = _image_artifact_path(global_heatmap_artifact, "global_heatmap")
     top_tiles_path = write_json(output_dir / "top_tiles.json", {"top_tiles": top_tiles.tolist()})
     prediction_path = write_json(
         output_dir / "prediction.json",
@@ -163,23 +176,23 @@ def build_explanation_bundle(
     bundle_path = write_json(
         output_dir / "bundle.json",
         {
-            "image_path": image_artifact["npy"],
-            "valid_mask_path": mask_artifact["npy"],
-            "attribution_path": attribution_artifact["npy"],
-            "heatmap_path": heatmap_artifact["npy"],
-            "local_heatmap_path": local_heatmap_artifact["npy"],
-            "global_heatmap_path": global_heatmap_artifact["npy"],
+            "image_path": str(image_path),
+            "valid_mask_path": str(valid_mask_path),
+            "attribution_path": str(attribution_path),
+            "heatmap_path": str(heatmap_path),
+            "local_heatmap_path": str(local_heatmap_path),
+            "global_heatmap_path": str(global_heatmap_path),
             "top_tiles_path": str(top_tiles_path),
             "prediction_path": str(prediction_path),
         },
     )
     return {
-        "image_path": Path(image_artifact["npy"]),
-        "valid_mask_path": Path(mask_artifact["npy"]),
-        "attribution_path": Path(attribution_artifact["npy"]),
-        "heatmap_path": Path(heatmap_artifact["npy"]),
-        "local_heatmap_path": Path(local_heatmap_artifact["npy"]),
-        "global_heatmap_path": Path(global_heatmap_artifact["npy"]),
+        "image_path": image_path,
+        "valid_mask_path": valid_mask_path,
+        "attribution_path": attribution_path,
+        "heatmap_path": heatmap_path,
+        "local_heatmap_path": local_heatmap_path,
+        "global_heatmap_path": global_heatmap_path,
         "top_tiles_path": top_tiles_path,
         "prediction_path": prediction_path,
         "bundle_path": bundle_path,

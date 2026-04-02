@@ -20,9 +20,10 @@ from greymodel import (
 )
 from greymodel.data import load_dataset_index, load_dataset_manifest, load_station_configs_from_index, station_config_for_record
 from greymodel.ui import UIExecutionDefaults, build_streamlit_command, launch_streamlit_ui, resolve_ui_proxy_configuration
-from greymodel.ui_app import _launch_managed_job, collect_ui_state, render_app
+from greymodel.ui_app import _autofit_live_payload, _launch_managed_job, _render_explain, collect_ui_state, render_app
 from greymodel.ui_models import predict_record_with_profile
 from greymodel.ui_workspace import ModelProfile, load_workspace, save_workspace
+from greymodel.utils import write_json, write_jsonl
 
 
 def _write_sample(root: Path, relative_path: str, image: np.ndarray, sidecar: dict | None = None) -> Path:
@@ -204,6 +205,14 @@ class _FakeStreamlit(_FakeContext):
         return lambda *args, **kwargs: None
 
 
+class _FakeExplainStreamlit(_FakeStreamlit):
+    def __init__(self) -> None:
+        super().__init__("Explain")
+
+    def button(self, label, *args, **kwargs):
+        return label == "Generate Explanation"
+
+
 def test_ui_dry_run_and_render_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     data_root = tmp_path / "data"
     _build_manifest(data_root)
@@ -221,6 +230,161 @@ def test_ui_dry_run_and_render_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyP
         fake_st = _FakeStreamlit(page)
         monkeypatch.setitem(sys.modules, "streamlit", fake_st)
         render_app(run_root=tmp_path / "runs", data_root=data_root)
+
+
+def test_explain_page_generate_button_builds_output_dir_without_path_format_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_root = tmp_path / "data"
+    _build_manifest(data_root)
+    workspace = load_workspace(run_root=tmp_path / "runs", data_root=data_root)
+    workspace.active_model_profile = "review_native_lite"
+
+    captured = {}
+
+    def _fake_build_runtime(*args, **kwargs):
+        return types.SimpleNamespace(model=object())
+
+    def _fake_build_explanation_bundle(_model, _model_input, _station_config, output_dir):
+        captured["output_dir"] = Path(output_dir)
+        bundle_path = Path(output_dir) / "bundle.json"
+        bundle_path.write_text(json.dumps({"ok": True}), encoding="utf-8")
+        return {"bundle_path": bundle_path}
+
+    monkeypatch.setattr("greymodel.ui_app.build_runtime_for_profile", _fake_build_runtime)
+    monkeypatch.setattr("greymodel.ui_app.build_explanation_bundle", _fake_build_explanation_bundle)
+
+    _render_explain(
+        _FakeExplainStreamlit(),
+        run_root=tmp_path / "runs",
+        data_root=data_root,
+        workspace=workspace,
+        workspace_path=None,
+    )
+
+    assert "output_dir" in captured
+    assert captured["output_dir"].name.startswith("review_native_lite-")
+    assert captured["output_dir"].exists()
+    assert (captured["output_dir"] / "bundle.json").exists()
+
+
+def test_autofit_live_payload_reads_current_stage_metrics_and_summary(tmp_path: Path) -> None:
+    run_root = tmp_path / "runs"
+    autofit_dir = run_root / "autofit-lite"
+    finetune_dir = autofit_dir / "stages" / "finetune-lite"
+
+    write_json(
+        autofit_dir / "run_status.json",
+        {
+            "run_dir": str(autofit_dir),
+            "run_root": str(run_root),
+            "session_id": "parent-session",
+            "stage": "autofit",
+            "variant": "lite",
+            "status": "running",
+            "updated_at": "2026-04-02T10:00:00Z",
+            "epoch": 0,
+            "global_step": 0,
+            "metadata": {},
+        },
+    )
+    write_json(
+        autofit_dir / "sessions" / "parent-session" / "run_status.json",
+        {
+            "run_dir": str(autofit_dir),
+            "run_root": str(run_root),
+            "session_id": "parent-session",
+            "stage": "autofit",
+            "variant": "lite",
+            "status": "running",
+            "updated_at": "2026-04-02T10:00:00Z",
+            "epoch": 0,
+            "global_step": 0,
+            "metadata": {},
+        },
+    )
+    write_json(
+        finetune_dir / "run_status.json",
+        {
+            "run_dir": str(finetune_dir),
+            "run_root": str(run_root),
+            "session_id": "finetune-session",
+            "stage": "finetune",
+            "variant": "lite",
+            "status": "running",
+            "updated_at": "2026-04-02T10:01:00Z",
+            "epoch": 2,
+            "global_step": 12,
+            "metrics_path": str(finetune_dir / "metrics.jsonl"),
+            "metadata": {},
+        },
+    )
+    write_json(
+        finetune_dir / "sessions" / "finetune-session" / "run_status.json",
+        {
+            "run_dir": str(finetune_dir),
+            "run_root": str(run_root),
+            "session_id": "finetune-session",
+            "stage": "finetune",
+            "variant": "lite",
+            "status": "running",
+            "updated_at": "2026-04-02T10:01:00Z",
+            "epoch": 2,
+            "global_step": 12,
+            "metrics_path": str(finetune_dir / "metrics.jsonl"),
+            "metadata": {},
+        },
+    )
+    write_jsonl(
+        finetune_dir / "metrics.jsonl",
+        [
+            {
+                "event": "step",
+                "global_step": 12,
+                "loss": 0.42,
+                "val_loss": 0.31,
+                "learning_rate": 0.001,
+                "samples_per_second": 128.5,
+            }
+        ],
+    )
+    write_jsonl(
+        finetune_dir / "epoch_metrics.jsonl",
+        [
+            {
+                "event": "epoch",
+                "epoch": 2,
+                "train_loss": 0.45,
+                "val_loss": 0.31,
+                "learning_rate": 0.001,
+            }
+        ],
+    )
+    write_json(
+        autofit_dir / "reports" / "autofit_summary.json",
+        {
+            "overall": {
+                "accuracy": 0.9,
+                "auroc": 0.96,
+                "far": 0.05,
+                "frr": 0.1,
+            },
+            "defect_family_bad_only": {"top1_accuracy": 0.8},
+            "best_checkpoint_path": str(autofit_dir / "checkpoints" / "best.pt"),
+            "report_path": str(autofit_dir / "reports" / "benchmark_report.json"),
+            "calibration_report_path": str(autofit_dir / "reports" / "calibration_report.json"),
+            "log_path": str(autofit_dir / "autofit.log"),
+        },
+    )
+
+    payload = _autofit_live_payload(run_root)
+
+    assert payload["stage_name"] == "finetune"
+    assert payload["latest_step"]["loss"] == 0.42
+    assert payload["latest_step"]["val_loss"] == 0.31
+    assert payload["latest_step"]["samples_per_second"] == 128.5
+    assert payload["summary"]["overall"]["auroc"] == 0.96
+    assert payload["summary"]["defect_family_bad_only"]["top1_accuracy"] == 0.8
 
 
 def test_streamlit_runner_executes_ui_script(tmp_path: Path) -> None:

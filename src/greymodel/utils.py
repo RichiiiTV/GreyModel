@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import fields, is_dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -23,6 +24,11 @@ def utc_timestamp() -> str:
 
 
 def json_default(value: Any):
+    if is_dataclass(value) and not isinstance(value, type):
+        return {field.name: getattr(value, field.name) for field in fields(value)}
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, np.generic):
@@ -109,6 +115,20 @@ def write_pgm(path: Path, image_uint8: np.ndarray) -> Path:
     return path
 
 
+def write_png(path: Path, image_uint8: np.ndarray) -> Path:
+    if image_uint8.dtype != np.uint8:
+        raise TypeError("write_png expects uint8 data.")
+    if image_uint8.ndim != 2:
+        raise ValueError("write_png expects a 2D grayscale array.")
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise ImportError("Pillow is required to write PNG artifacts.") from exc
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(image_uint8, mode="L").save(path)
+    return path
+
+
 def normalize_uint8_image(image: np.ndarray) -> np.ndarray:
     if image.dtype == np.uint8:
         return image
@@ -152,9 +172,9 @@ def save_array_artifact(path_without_suffix: Path, array: np.ndarray) -> dict[st
     result = {"npy": str(npy_path)}
     if array.ndim == 2:
         try:
-            pgm_path = path_without_suffix.with_suffix(".pgm")
-            write_pgm(pgm_path, normalize_uint8_image(array))
-            result["pgm"] = str(pgm_path)
+            png_path = path_without_suffix.with_suffix(".png")
+            write_png(png_path, normalize_uint8_image(array))
+            result["png"] = str(png_path)
         except Exception:
             pass
     return result

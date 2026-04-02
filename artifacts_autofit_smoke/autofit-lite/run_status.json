@@ -1,0 +1,25 @@
+{
+  "best_checkpoint_path": null,
+  "epoch": 0,
+  "failed_at": "2026-04-02T12:34:23Z",
+  "failure_dir": "artifacts_autofit_smoke\\autofit-lite\\sessions\\20260402-123423-914200\\failures\\autofit-20260402-123423",
+  "global_step": 0,
+  "index_path": null,
+  "latest_checkpoint_path": null,
+  "latest_usable_checkpoint_path": null,
+  "manifest_path": "tests",
+  "metadata": {
+    "last_failure_id": "autofit-20260402-123423"
+  },
+  "metrics_path": null,
+  "model_version": "0.2.0",
+  "run_dir": "artifacts_autofit_smoke\\autofit-lite",
+  "run_root": "artifacts_autofit_smoke",
+  "session_id": "20260402-123423-914200",
+  "stage": "autofit",
+  "started_at": "2026-04-02T12:34:23Z",
+  "status": "failed",
+  "summary_path": "artifacts_autofit_smoke\\autofit-lite\\reports\\training_summary.json",
+  "updated_at": "2026-04-02T12:34:23Z",
+  "variant": "lite"
+}

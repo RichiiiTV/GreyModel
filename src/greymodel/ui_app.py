@@ -4,6 +4,7 @@ import argparse
 import json
 import subprocess
 import sys
+import types
 from dataclasses import asdict
 from functools import lru_cache
 from pathlib import Path
@@ -25,10 +26,24 @@ from greymodel.ui_workspace import (
     upsert_model_profile,
     workspace_path_for,
 )
-from greymodel.utils import ensure_dir, load_uint8_grayscale, read_json, utc_timestamp, write_json, write_jsonl
+from greymodel.utils import ensure_dir, load_uint8_grayscale, read_json, read_jsonl, utc_timestamp, write_json, write_jsonl
 
 
 PAGE_ORDER = ["Home", "Datasets", "Models", "Train", "Runs", "Predict & Review", "Explain", "Failures", "Settings"]
+
+STAGE_LABELS = {
+    "pretrain": "1. Public Pretraining",
+    "domain-adapt": "2. Adapt To Production Images",
+    "finetune": "3. Train Final Inspector",
+    "calibrate": "4. Calibrate Decision Thresholds",
+}
+
+STAGE_HELP = {
+    "pretrain": "Use a public or unlabeled dataset to teach the model general grayscale defect structure before it sees production labels.",
+    "domain-adapt": "Use unlabeled production images to adapt the model to your real station, camera, and product appearance.",
+    "finetune": "Use labeled production data to train the final good-vs-bad inspector and defect-family outputs.",
+    "calibrate": "Build station-specific thresholds after training so the final pass/fail decision is stable on your line.",
+}
 
 
 def _parse_args(argv: list[str] | None = None):
@@ -251,6 +266,61 @@ def _metric_card(st, label: str, value: object, help_text: str = "") -> None:
     )
 
 
+def _simple_mode(workspace: WorkspaceConfig) -> bool:
+    return str(getattr(workspace, "ui_mode", "vision_engineer")) != "advanced"
+
+
+def _profile_summary(profile: ModelProfile) -> dict[str, str]:
+    if profile.profile_id == "prod_fast_native":
+        return {
+            "title": "Production Fast Path",
+            "purpose": "Best choice for line-side screening and low-latency review.",
+            "details": "Fast screen first, then patch refinement only on uncertain or suspicious samples.",
+        }
+    if profile.profile_id == "review_native_base":
+        return {
+            "title": "Review Base",
+            "purpose": "Best choice for offline review and richer evidence.",
+            "details": "Higher-capacity native model with slower but richer outputs.",
+        }
+    if profile.profile_id == "review_native_lite":
+        return {
+            "title": "Review Lite",
+            "purpose": "Good default when you want a lighter review model.",
+            "details": "Compact native model with the same main output contract as Base.",
+        }
+    if profile.is_huggingface:
+        return {
+            "title": profile.display_name or profile.profile_id,
+            "purpose": "External Hugging Face model profile.",
+            "details": "Useful for experiments, comparisons, or customer-specific backends.",
+        }
+    return {
+        "title": profile.display_name or profile.profile_id,
+        "purpose": profile.notes or "Model profile",
+        "details": "Backend: %s | Runtime: %s" % (profile.backend_family, profile.runtime_engine),
+    }
+
+
+def _bundle_preview_paths(bundle_payload: Mapping[str, object]) -> list[Path]:
+    keys = (
+        "image_path",
+        "valid_mask_path",
+        "attribution_path",
+        "heatmap_path",
+        "local_heatmap_path",
+        "global_heatmap_path",
+    )
+    paths = []
+    for key in keys:
+        value = bundle_payload.get(key)
+        if value not in (None, ""):
+            path = Path(str(value))
+            if path.exists():
+                paths.append(path)
+    return paths
+
+
 def collect_ui_state(run_root: Path | str = "artifacts", data_root: Path | str = "data", workspace_path: Path | str | None = None) -> dict[str, object]:
     run_root = Path(run_root)
     data_root = Path(data_root)
@@ -261,6 +331,7 @@ def collect_ui_state(run_root: Path | str = "artifacts", data_root: Path | str =
         "workspace_path": str(Path(workspace_path) if workspace_path is not None else workspace_path_for(run_root)),
         "workspace": {
             "workspace_name": workspace.workspace_name,
+            "ui_mode": workspace.ui_mode,
             "active_dataset_index": workspace.active_dataset_index,
             "active_model_profile": workspace.active_model_profile,
             "profile_count": len(workspace.model_profiles),
@@ -348,6 +419,289 @@ def _render_job_history(st, run_root: Path, kind: str) -> None:
             st.code(_tail_text(Path(str(selected_log))), language="text")
 
 
+def _read_last_jsonl_record(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        rows = read_jsonl(path)
+    except Exception:
+        return {}
+    return dict(rows[-1]) if rows else {}
+
+
+def _run_status_for_dir(run_dir: Path) -> dict[str, object]:
+    status_path = run_dir / "run_status.json"
+    if not status_path.exists():
+        return {}
+    try:
+        return dict(read_json(status_path))
+    except Exception:
+        return {}
+
+
+def _latest_autofit_run_status(run_root: Path) -> dict[str, object]:
+    rows = [row for row in list_run_statuses(run_root) if row.stage == "autofit"]
+    if not rows:
+        return {}
+    latest = rows[0]
+    return {
+        "run_dir": latest.run_dir,
+        "status": latest.status,
+        "updated_at": latest.updated_at,
+        "epoch": latest.epoch,
+        "global_step": latest.global_step,
+        "best_checkpoint_path": latest.best_checkpoint_path,
+        "latest_usable_checkpoint_path": latest.latest_usable_checkpoint_path,
+        "report_path": latest.report_path,
+        "summary_path": latest.summary_path,
+        "metadata": dict(latest.metadata or {}),
+    }
+
+
+def _autofit_child_run_dirs(parent_run_dir: Path, variant: str) -> dict[str, Path]:
+    stage_root = parent_run_dir / "stages"
+    return {
+        "finetune": stage_root / ("finetune-%s" % variant),
+        "calibrate": stage_root / ("calibrate-%s" % variant),
+        "benchmark": stage_root / ("benchmark-%s" % variant),
+    }
+
+
+def _active_autofit_stage(parent_status: Mapping[str, object]) -> tuple[str, dict[str, object], Path | None]:
+    run_dir = parent_status.get("run_dir")
+    if not run_dir:
+        return "autofit", {}, None
+    variant = str(Path(str(run_dir)).name).split("-", 1)[1] if "-" in Path(str(run_dir)).name else "base"
+    child_dirs = _autofit_child_run_dirs(Path(str(run_dir)), variant)
+    stage_rows: list[tuple[str, dict[str, object], Path]] = []
+    for stage_name, stage_dir in child_dirs.items():
+        status = _run_status_for_dir(stage_dir)
+        if status:
+            stage_rows.append((stage_name, status, stage_dir))
+    if not stage_rows:
+        return "autofit", dict(parent_status), Path(str(run_dir))
+    running = [row for row in stage_rows if str(row[1].get("status", "")).lower() in {"created", "running"}]
+    if running:
+        running.sort(key=lambda item: str(item[1].get("updated_at", "")), reverse=True)
+        return running[0]
+    stage_rows.sort(key=lambda item: str(item[1].get("updated_at", "")), reverse=True)
+    return stage_rows[0]
+
+
+def _autofit_live_payload(run_root: Path) -> dict[str, object]:
+    parent_status = _latest_autofit_run_status(run_root)
+    if not parent_status:
+        return {}
+    stage_name, stage_status, stage_dir = _active_autofit_stage(parent_status)
+    metrics_path = Path(str(stage_status.get("metrics_path") or (stage_dir / "metrics.jsonl" if stage_dir is not None else "")))
+    epoch_metrics_path = stage_dir / "epoch_metrics.jsonl" if stage_dir is not None else Path()
+    latest_step = _read_last_jsonl_record(metrics_path) if metrics_path else {}
+    latest_epoch = _read_last_jsonl_record(epoch_metrics_path) if stage_dir is not None else {}
+    summary_path = _latest_autofit_summary(run_root)
+    summary = read_json(summary_path) if summary_path is not None and summary_path.exists() else {}
+    return {
+        "parent_status": parent_status,
+        "stage_name": stage_name,
+        "stage_status": stage_status,
+        "stage_dir": str(stage_dir) if stage_dir is not None else None,
+        "latest_step": latest_step,
+        "latest_epoch": latest_epoch,
+        "summary": summary,
+    }
+
+
+def _render_autofit_live_monitor(st, run_root: Path, *, key_prefix: str) -> None:
+    st.markdown("### 4. Watch Progress")
+    live_updates = st.checkbox("Live updates", value=True, key="%s_live" % key_prefix)
+    refresh_seconds = int(
+        st.selectbox(
+            "Refresh every",
+            [2, 5, 10],
+            index=0,
+            format_func=lambda value: "%ss" % value,
+            key="%s_refresh_seconds" % key_prefix,
+        )
+    )
+
+    def _body() -> None:
+        _render_job_history(st, run_root, "autofit")
+        payload = _autofit_live_payload(run_root)
+        if not payload:
+            st.info("No AutoFit run found yet.")
+            return
+        parent_status = dict(payload["parent_status"])
+        stage_status = dict(payload["stage_status"])
+        latest_step = dict(payload["latest_step"])
+        latest_epoch = dict(payload["latest_epoch"])
+        summary = dict(payload["summary"])
+        stage_name = str(payload["stage_name"])
+        cols = st.columns(5)
+        _metric_card(cols[0], "Run Status", parent_status.get("status", "unknown"), "AutoFit workflow state")
+        _metric_card(cols[1], "Current Stage", STAGE_LABELS.get(stage_name, stage_name), "Stage writing logs right now")
+        _metric_card(cols[2], "Epoch", stage_status.get("epoch", latest_epoch.get("epoch", 0)), "Latest completed epoch")
+        _metric_card(cols[3], "Step", stage_status.get("global_step", latest_step.get("global_step", 0)), "Latest global step")
+        _metric_card(cols[4], "Updated", parent_status.get("updated_at", "n/a"), "Last artifact update")
+        st.markdown("### Current Performance")
+        perf_cols = st.columns(5)
+        _metric_card(perf_cols[0], "Train Loss", latest_step.get("loss", latest_epoch.get("train_loss", "n/a")), "Latest optimizer step")
+        _metric_card(perf_cols[1], "Val Loss", latest_step.get("val_loss", latest_epoch.get("val_loss", "n/a")), "Latest validation value")
+        _metric_card(perf_cols[2], "Learning Rate", latest_step.get("learning_rate", latest_epoch.get("learning_rate", "n/a")), "Current LR")
+        _metric_card(perf_cols[3], "Samples / Sec", latest_step.get("samples_per_second", "n/a"), "Throughput")
+        if summary:
+            overall = dict(summary.get("overall", {}))
+            _metric_card(perf_cols[4], "Val AUROC", overall.get("auroc", "n/a"), "Final validation benchmark")
+        else:
+            _metric_card(perf_cols[4], "Val AUROC", "n/a", "Available after benchmark")
+        log_path = None
+        for job in _ui_jobs(run_root):
+            if job.get("kind") == "autofit" and job.get("log_path"):
+                log_path = Path(str(job["log_path"]))
+                break
+        if log_path is not None and log_path.exists():
+            st.code(_tail_text(log_path), language="text")
+        if summary:
+            overall = dict(summary.get("overall", {}))
+            defect_family = dict(summary.get("defect_family_bad_only", {}))
+            st.markdown("### 5. Review Performance")
+            cols = st.columns(5)
+            _metric_card(cols[0], "Accuracy", overall.get("accuracy", "n/a"), "Validation set")
+            _metric_card(cols[1], "AUROC", overall.get("auroc", "n/a"), "Binary quality")
+            _metric_card(cols[2], "FAR", overall.get("far", "n/a"), "False accept rate")
+            _metric_card(cols[3], "FRR", overall.get("frr", "n/a"), "False reject rate")
+            _metric_card(cols[4], "Bad Top1", defect_family.get("top1_accuracy", "n/a"), "Bad-only defect family")
+            st.write(
+                {
+                    "best_checkpoint_path": summary.get("best_checkpoint_path"),
+                    "report_path": summary.get("report_path"),
+                    "calibration_report_path": summary.get("calibration_report_path"),
+                    "log_path": summary.get("log_path"),
+                }
+            )
+
+    if live_updates and isinstance(st, types.ModuleType) and callable(getattr(st, "fragment", None)):
+        @st.fragment(run_every=refresh_seconds)
+        def _live_fragment() -> None:
+            _body()
+
+        _live_fragment()
+    else:
+        _body()
+
+
+def _default_autofit_data_path(workspace: WorkspaceConfig) -> str:
+    if workspace.active_manifest:
+        return str(workspace.active_manifest)
+    if workspace.active_dataset_index:
+        try:
+            return str(load_dataset_index(workspace.active_dataset_index).manifest_path)
+        except Exception:
+            pass
+    return str(Path(workspace.data_root) / "production")
+
+
+def _latest_autofit_summary(run_root: Path) -> Path | None:
+    candidates = sorted(run_root.glob("autofit-*/reports/autofit_summary.json"))
+    return candidates[-1] if candidates else None
+
+
+def _render_autofit_launcher(
+    st,
+    *,
+    repo_root: Path,
+    run_root: Path,
+    workspace: WorkspaceConfig,
+    execution_defaults: UIExecutionDefaults,
+    title: str,
+    description: str,
+) -> None:
+    st.markdown("### %s" % title)
+    st.caption(description)
+    model_options = ["base", "lite"]
+    active_profile = _active_profile(workspace)
+    default_model = "lite" if str(getattr(active_profile, "native_variant", "")).lower() == "lite" else "base"
+    simple_mode = _simple_mode(workspace)
+    data_path = st.text_input("1. Data", value=_default_autofit_data_path(workspace), key="%s_data" % title)
+    model_choice = st.selectbox("2. Model", model_options, index=_selectbox_index(model_options, default_model), key="%s_model" % title)
+    if simple_mode:
+        st.caption("Execution backend: `%s` from workspace settings. Open `Advanced` only if you need to change resources or hyperparameters." % execution_defaults.execution_backend)
+        execution_settings = {
+            "execution_backend": execution_defaults.execution_backend,
+            "nproc_per_node": int(max(execution_defaults.slurm_nproc_per_node, 1)),
+            "execution_defaults": execution_defaults,
+        }
+    else:
+        execution_settings = _render_execution_settings(
+            st,
+            key_prefix="autofit_%s" % title.lower().replace(" ", "_"),
+            execution_defaults=execution_defaults,
+            show_nproc=True,
+            nproc_default=max(int(execution_defaults.slurm_nproc_per_node), 1),
+        )
+    with st.expander("Advanced", expanded=False):
+        if simple_mode:
+            execution_settings = _render_execution_settings(
+                st,
+                key_prefix="autofit_%s" % title.lower().replace(" ", "_"),
+                execution_defaults=execution_defaults,
+                show_nproc=True,
+                nproc_default=max(int(execution_defaults.slurm_nproc_per_node), 1),
+            )
+        epochs = int(st.number_input("Epochs", min_value=1, value=1, key="%s_epochs" % title))
+        batch_size = int(st.number_input("Images Per Step", min_value=1, value=2, key="%s_batch" % title))
+        learning_rate = float(st.number_input("Learning Rate", min_value=1e-6, value=1e-3, format="%.6f", key="%s_lr" % title))
+        num_workers = int(st.number_input("Workers", min_value=0, value=0, key="%s_workers" % title))
+        precision = st.selectbox("Precision", ["auto", "fp32", "fp16", "bf16"], index=0, key="%s_precision" % title)
+    task_tokens = [
+        "auto",
+        "fit",
+        "--data",
+        data_path,
+        "--model",
+        model_choice,
+        "--run-root",
+        workspace.run_root,
+        "--execution",
+        "local",
+        "--epochs",
+        str(epochs),
+        "--batch-size",
+        str(batch_size),
+        "--learning-rate",
+        str(learning_rate),
+        "--num-workers",
+        str(num_workers),
+        "--precision",
+        precision,
+    ]
+    _, preview_command = _preview_job_commands(
+        task_tokens,
+        repo_root=repo_root,
+        run_root=run_root,
+        kind="autofit",
+        execution_backend=str(execution_settings["execution_backend"]),
+        nproc_per_node=int(execution_settings["nproc_per_node"]),
+        execution_defaults=execution_settings["execution_defaults"],
+    )
+    if not _simple_mode(workspace):
+        st.code(format_shell_command(preview_command))
+    if st.button("3. Start Automated Training", key="%s_start" % title):
+        payload = _launch_managed_job(
+            task_tokens,
+            cwd=repo_root,
+            run_root=run_root,
+            kind="autofit",
+            execution_backend=str(execution_settings["execution_backend"]),
+            nproc_per_node=int(execution_settings["nproc_per_node"]),
+            execution_defaults=execution_settings["execution_defaults"],
+            metadata={"workflow": "autofit", "model": model_choice},
+        )
+        if payload.get("backend") == "slurm":
+            st.success("Submitted AutoFit Slurm job %s" % payload.get("job_id"))
+        else:
+            st.success("Started AutoFit process %s" % payload.get("pid"))
+    _render_autofit_live_monitor(st, run_root, key_prefix="%s_monitor" % title.lower().replace(" ", "_"))
+
+
 def _active_profile(workspace: WorkspaceConfig) -> ModelProfile:
     if workspace.active_model_profile and workspace.active_model_profile in workspace.model_profiles:
         return workspace.model_profiles[workspace.active_model_profile]
@@ -362,9 +716,9 @@ def _persist_workspace(workspace: WorkspaceConfig, workspace_path: Path | None) 
     save_workspace(workspace, workspace_path)
 
 
-def _render_home(st, workspace: WorkspaceConfig, run_root: Path, data_root: Path) -> None:
+def _render_home(st, repo_root: Path, workspace: WorkspaceConfig, run_root: Path, data_root: Path, execution_defaults: UIExecutionDefaults) -> None:
     st.markdown('<div class="gm-title">GreyModel Workspace</div>', unsafe_allow_html=True)
-    st.markdown('<div class="gm-subtitle">A polished operator console for datasets, models, runs, prediction review, and failures.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gm-subtitle">A vision-inspection console for preparing datasets, choosing models, reviewing predictions, and launching jobs.</div>', unsafe_allow_html=True)
     runs = list_run_statuses(run_root)
     failures = list_failure_records(run_root)
     datasets = _known_dataset_indexes(workspace, data_root)
@@ -374,6 +728,27 @@ def _render_home(st, workspace: WorkspaceConfig, run_root: Path, data_root: Path
     _metric_card(cols[1], "Runs", len(runs), "Tracked sessions")
     _metric_card(cols[2], "Failures", len(failures), "Quarantined bundles")
     _metric_card(cols[3], "Active Profile", profile.display_name or profile.profile_id, profile.backend_family)
+    if _simple_mode(workspace):
+        st.markdown("### Recommended Workflow")
+        st.markdown(
+            "\n".join(
+                [
+                    "1. Select your labeled dataset or manifest below.",
+                    "2. Choose `base` or `lite` depending on the speed/accuracy tradeoff you want.",
+                    "3. Start AutoFit and watch the live job log.",
+                    "4. Review the final checkpoint and validation metrics once training finishes.",
+                ]
+            )
+        )
+        _render_autofit_launcher(
+            st,
+            repo_root=repo_root,
+            run_root=run_root,
+            workspace=workspace,
+            execution_defaults=execution_defaults,
+            title="Automated Training",
+            description="Point GreyModel at your labeled data, choose a native model, and let it build manifests, split data, train, calibrate, and score the result.",
+        )
     st.markdown("### Recent Runs")
     if runs:
         st.dataframe([{"stage": row.stage, "variant": row.variant, "status": row.status, "updated_at": row.updated_at, "checkpoint": row.latest_usable_checkpoint_path, "report": row.report_path} for row in runs[:10]], use_container_width=True)
@@ -388,6 +763,8 @@ def _render_home(st, workspace: WorkspaceConfig, run_root: Path, data_root: Path
 
 def _render_datasets(st, workspace: WorkspaceConfig, data_root: Path, workspace_path: Path | None) -> None:
     st.header("Datasets")
+    if _simple_mode(workspace):
+        st.caption("Choose the image bundle you want to inspect or train on.")
     if st.button("Deep Scan Dataset Root", key="gm_dataset_deep_scan"):
         _scan_dataset_indexes_cached.cache_clear()
         dataset_indexes = _find_dataset_indexes(data_root, deep=True)
@@ -406,7 +783,20 @@ def _render_datasets(st, workspace: WorkspaceConfig, data_root: Path, workspace_
     _metric_card(cols[1], "Stations", len(index.station_configs), "Station configs")
     _metric_card(cols[2], "Splits", len(index.split_assignments), "Leakage-safe assignments")
     _metric_card(cols[3], "Ontology", Path(index.ontology_path).name, "Defect taxonomy")
-    st.json({"manifest_path": index.manifest_path, "ontology_path": index.ontology_path, "hard_negatives_path": index.hard_negatives_path, "grouping_keys": list(index.grouping_keys)})
+    if _simple_mode(workspace):
+        try:
+            bundle_value = str(selected.relative_to(data_root))
+        except Exception:
+            bundle_value = str(selected)
+        st.write(
+            {
+                "bundle": bundle_value,
+                "manifest": index.manifest_path,
+                "ontology": index.ontology_path,
+            }
+        )
+    else:
+        st.json({"manifest_path": index.manifest_path, "ontology_path": index.ontology_path, "hard_negatives_path": index.hard_negatives_path, "grouping_keys": list(index.grouping_keys)})
     if records:
         sample_record = records[0]
         preview = st.columns([1, 1.2])
@@ -422,60 +812,91 @@ def _render_datasets(st, workspace: WorkspaceConfig, data_root: Path, workspace_
 def _render_models(st, workspace: WorkspaceConfig, data_root: Path, workspace_path: Path | None) -> None:
     st.header("Models")
     profiles = sorted(workspace.model_profiles.values(), key=lambda item: item.profile_id)
+    if _simple_mode(workspace):
+        st.caption("Pick the model profile that matches your goal. The advanced profile editor is hidden by default.")
     if profiles:
-        st.dataframe([{"profile_id": p.profile_id, "name": p.display_name or p.profile_id, "backend_family": p.backend_family, "task_type": p.task_type, "model_id": p.model_id, "runtime_engine": p.runtime_engine, "latency_target_ms": p.latency_target_ms} for p in profiles], use_container_width=True)
+        if _simple_mode(workspace):
+            st.dataframe(
+                [
+                    {
+                        "profile": p.display_name or p.profile_id,
+                        "profile_id": p.profile_id,
+                        "use_for": _profile_summary(p)["purpose"],
+                        "backend": p.backend_family,
+                        "target_ms": p.latency_target_ms,
+                    }
+                    for p in profiles
+                ],
+                use_container_width=True,
+            )
+        else:
+            st.dataframe([{"profile_id": p.profile_id, "name": p.display_name or p.profile_id, "backend_family": p.backend_family, "task_type": p.task_type, "model_id": p.model_id, "runtime_engine": p.runtime_engine, "latency_target_ms": p.latency_target_ms} for p in profiles], use_container_width=True)
     selected_id = st.selectbox("Selected profile", _profile_ids(workspace) or ["prod_fast_native"], index=_selectbox_index(_profile_ids(workspace) or ["prod_fast_native"], workspace.active_model_profile or "prod_fast_native"), key="gm_selected_profile")
     profile = workspace.model_profiles.get(selected_id, _active_profile(workspace))
-    with st.form("model_profile_form"):
-        profile_id = st.text_input("Profile ID", value=profile.profile_id)
-        display_name = st.text_input("Display Name", value=profile.display_name)
-        backend_family = st.selectbox("Backend Family", ["native", "hf_classification", "hf_detection", "hf_segmentation"], index=_selectbox_index(["native", "hf_classification", "hf_detection", "hf_segmentation"], profile.backend_family))
-        task_type = st.selectbox("Task Type", ["train", "predict", "review", "benchmark", "calibrate"], index=_selectbox_index(["train", "predict", "review", "benchmark", "calibrate"], profile.task_type))
-        native_variant_options = ["fast", "base", "lite"]
-        native_variant = st.selectbox("Native Variant", native_variant_options, index=_selectbox_index(native_variant_options, profile.native_variant))
-        model_id = st.text_input("Hugging Face Model ID or Alias", value=profile.model_id or "")
-        local_path = st.text_input("Local Checkpoint / Snapshot Path", value=profile.local_path or "")
-        model_revision = st.text_input("Model Revision", value=profile.model_revision or "")
-        runtime_engine = st.selectbox("Runtime Engine", ["pytorch", "onnxruntime", "tensorrt"], index=_selectbox_index(["pytorch", "onnxruntime", "tensorrt"], profile.runtime_engine))
-        cache_policy = st.selectbox("Cache Policy", ["online_and_cache", "offline_cache", "local_only"], index=_selectbox_index(["online_and_cache", "offline_cache", "local_only"], profile.cache_policy))
-        latency_target_ms = st.number_input("Latency Target (ms)", min_value=0.1, value=float(profile.latency_target_ms), step=0.5)
-        input_mode = st.selectbox("Input Mode", ["grayscale", "rgb_replicated"], index=_selectbox_index(["grayscale", "rgb_replicated"], profile.input_mode))
-        output_mode = st.selectbox("Output Mode", ["hierarchical", "classification", "detection", "segmentation"], index=_selectbox_index(["hierarchical", "classification", "detection", "segmentation"], profile.output_mode))
-        label_mapping_text = st.text_area("Label Mapping JSON", value=json.dumps(dict(profile.label_mapping), indent=2, sort_keys=True), height=120)
-        family_mapping_text = st.text_area("Defect Family Mapping JSON", value=json.dumps(dict(profile.defect_family_mapping), indent=2, sort_keys=True), height=120)
-        notes = st.text_area("Notes", value=profile.notes, height=100)
-        submit = st.form_submit_button("Save Profile")
-    if submit:
-        try:
-            label_mapping = json.loads(label_mapping_text or "{}")
-            family_mapping = json.loads(family_mapping_text or "{}")
-        except Exception as exc:
-            st.error("Invalid JSON: %s" % exc)
-        else:
-            updated = ModelProfile(
-                profile_id=profile_id,
-                display_name=display_name,
-                backend_family=backend_family,
-                task_type=task_type,
-                model_id=model_id or None,
-                local_path=local_path or None,
-                model_revision=model_revision or None,
-                native_variant=native_variant,
-                runtime_engine=runtime_engine,
-                cache_policy=cache_policy,
-                latency_target_ms=float(latency_target_ms),
-                input_mode=input_mode,
-                output_mode=output_mode,
-                label_mapping=label_mapping,
-                defect_family_mapping=family_mapping,
-                notes=notes,
-                created_at=profile.created_at or utc_timestamp(),
-                updated_at=utc_timestamp(),
-            )
-            workspace = upsert_model_profile(workspace, updated)
-            workspace.active_model_profile = updated.profile_id
-            _persist_workspace(workspace, workspace_path)
-            st.success("Profile saved.")
+    summary = _profile_summary(profile)
+    st.write(
+        {
+            "profile": summary["title"],
+            "purpose": summary["purpose"],
+            "details": summary["details"],
+            "latency_target_ms": float(profile.latency_target_ms),
+            "runtime_engine": profile.runtime_engine,
+        }
+    )
+    show_editor = not _simple_mode(workspace)
+    if _simple_mode(workspace):
+        show_editor = st.checkbox("Show advanced profile editor", value=False, key="gm_show_advanced_profile_editor")
+    if show_editor:
+        with st.form("model_profile_form"):
+            profile_id = st.text_input("Profile ID", value=profile.profile_id)
+            display_name = st.text_input("Display Name", value=profile.display_name)
+            backend_family = st.selectbox("Backend Family", ["native", "hf_classification", "hf_detection", "hf_segmentation"], index=_selectbox_index(["native", "hf_classification", "hf_detection", "hf_segmentation"], profile.backend_family))
+            task_type = st.selectbox("Task Type", ["train", "predict", "review", "benchmark", "calibrate"], index=_selectbox_index(["train", "predict", "review", "benchmark", "calibrate"], profile.task_type))
+            native_variant_options = ["fast", "base", "lite"]
+            native_variant = st.selectbox("Native Variant", native_variant_options, index=_selectbox_index(native_variant_options, profile.native_variant))
+            model_id = st.text_input("Hugging Face Model ID or Alias", value=profile.model_id or "")
+            local_path = st.text_input("Local Checkpoint / Snapshot Path", value=profile.local_path or "")
+            model_revision = st.text_input("Model Revision", value=profile.model_revision or "")
+            runtime_engine = st.selectbox("Runtime Engine", ["pytorch", "onnxruntime", "tensorrt"], index=_selectbox_index(["pytorch", "onnxruntime", "tensorrt"], profile.runtime_engine))
+            cache_policy = st.selectbox("Cache Policy", ["online_and_cache", "offline_cache", "local_only"], index=_selectbox_index(["online_and_cache", "offline_cache", "local_only"], profile.cache_policy))
+            latency_target_ms = st.number_input("Latency Target (ms)", min_value=0.1, value=float(profile.latency_target_ms), step=0.5)
+            input_mode = st.selectbox("Input Mode", ["grayscale", "rgb_replicated"], index=_selectbox_index(["grayscale", "rgb_replicated"], profile.input_mode))
+            output_mode = st.selectbox("Output Mode", ["hierarchical", "classification", "detection", "segmentation"], index=_selectbox_index(["hierarchical", "classification", "detection", "segmentation"], profile.output_mode))
+            label_mapping_text = st.text_area("Label Mapping JSON", value=json.dumps(dict(profile.label_mapping), indent=2, sort_keys=True), height=120)
+            family_mapping_text = st.text_area("Defect Family Mapping JSON", value=json.dumps(dict(profile.defect_family_mapping), indent=2, sort_keys=True), height=120)
+            notes = st.text_area("Notes", value=profile.notes, height=100)
+            submit = st.form_submit_button("Save Profile")
+        if submit:
+            try:
+                label_mapping = json.loads(label_mapping_text or "{}")
+                family_mapping = json.loads(family_mapping_text or "{}")
+            except Exception as exc:
+                st.error("Invalid JSON: %s" % exc)
+            else:
+                updated = ModelProfile(
+                    profile_id=profile_id,
+                    display_name=display_name,
+                    backend_family=backend_family,
+                    task_type=task_type,
+                    model_id=model_id or None,
+                    local_path=local_path or None,
+                    model_revision=model_revision or None,
+                    native_variant=native_variant,
+                    runtime_engine=runtime_engine,
+                    cache_policy=cache_policy,
+                    latency_target_ms=float(latency_target_ms),
+                    input_mode=input_mode,
+                    output_mode=output_mode,
+                    label_mapping=label_mapping,
+                    defect_family_mapping=family_mapping,
+                    notes=notes,
+                    created_at=profile.created_at or utc_timestamp(),
+                    updated_at=utc_timestamp(),
+                )
+                workspace = upsert_model_profile(workspace, updated)
+                workspace.active_model_profile = updated.profile_id
+                _persist_workspace(workspace, workspace_path)
+                st.success("Profile saved.")
     buttons = st.columns(3)
     if buttons[0].button("Set Active", key="gm_profile_set_active"):
         workspace.active_model_profile = selected_id
@@ -508,17 +929,40 @@ def _render_models(st, workspace: WorkspaceConfig, data_root: Path, workspace_pa
 
 def _render_train(st, repo_root: Path, run_root: Path, workspace: WorkspaceConfig, execution_defaults: UIExecutionDefaults, workspace_path: Path | None) -> None:
     st.header("Train")
+    if _simple_mode(workspace):
+        _render_autofit_launcher(
+            st,
+            repo_root=repo_root,
+            run_root=run_root,
+            workspace=workspace,
+            execution_defaults=execution_defaults,
+            title="Automated Training",
+            description="Use the simplified training flow for labeled production data. Advanced stage-by-stage controls stay available when you switch the UI mode to `advanced`.",
+        )
+        if st.button("Save Workspace Defaults"):
+            workspace.default_execution_backend = str(execution_defaults.execution_backend)
+            workspace.slurm_cpus = int(execution_defaults.slurm_cpus)
+            workspace.slurm_mem = str(execution_defaults.slurm_mem)
+            workspace.slurm_gres = str(execution_defaults.slurm_gres)
+            workspace.slurm_partition = str(execution_defaults.slurm_partition)
+            workspace.slurm_queue = str(execution_defaults.slurm_queue)
+            workspace.slurm_nproc_per_node = int(execution_defaults.slurm_nproc_per_node)
+            _persist_workspace(workspace, workspace_path)
+            st.success("Workspace defaults saved.")
+        return
     profile = _active_profile(workspace)
     if not profile.is_native:
         st.info("Training jobs from the UI currently target the native GreyModel pipeline. Hugging Face profiles remain available for review and benchmark workflows.")
-    stage = st.selectbox("Stage", ["pretrain", "domain-adapt", "finetune", "calibrate"])
-    manifest = st.text_input("Manifest", workspace.active_manifest or str(repo_root / "data" / "production" / "manifest.jsonl"))
-    index = st.text_input("Index", workspace.active_dataset_index or str(repo_root / "data" / "production" / "dataset_index.json"))
+    stage_names = list(STAGE_LABELS.keys())
+    stage = st.selectbox("Workflow step", stage_names, format_func=lambda value: STAGE_LABELS.get(value, value))
+    st.caption(STAGE_HELP.get(stage, ""))
+    manifest = st.text_input("Dataset Manifest", workspace.active_manifest or str(repo_root / "data" / "production" / "manifest.jsonl"))
+    index = st.text_input("Dataset Index", workspace.active_dataset_index or str(repo_root / "data" / "production" / "dataset_index.json"))
     variant = st.selectbox("Variant", ["base", "lite"], index=_selectbox_index(["base", "lite"], profile.native_variant if profile.is_native else "base"))
     if profile.is_native and str(profile.native_variant).lower() == "fast":
         st.info("The production fast profile is optimized for inference and benchmark workflows. Training jobs still use the review backbones (`base` or `lite`).")
     epochs = st.number_input("Epochs", min_value=1, value=1)
-    batch_size = st.number_input("Batch Size", min_value=1, value=2)
+    batch_size = st.number_input("Images Per Step", min_value=1, value=2)
     run_root_value = st.text_input("Run Root", workspace.run_root)
     execution_settings = _render_execution_settings(st, key_prefix="train", execution_defaults=execution_defaults, show_nproc=(stage != "calibrate"), nproc_default=execution_defaults.slurm_nproc_per_node if stage != "calibrate" else 1)
     task_tokens = ["train", stage, "--manifest", manifest, "--index", index, "--variant", variant, "--run-root", run_root_value]
@@ -526,8 +970,9 @@ def _render_train(st, repo_root: Path, run_root: Path, workspace: WorkspaceConfi
         task_tokens.extend(["--epochs", str(int(epochs)), "--batch-size", str(int(batch_size))])
     metadata = {"profile_id": profile.profile_id, "profile_backend_family": profile.backend_family}
     inner_command, preview_command = _preview_job_commands(task_tokens, repo_root=repo_root, run_root=Path(run_root_value), kind="train", execution_backend=str(execution_settings["execution_backend"]), nproc_per_node=int(execution_settings["nproc_per_node"]), execution_defaults=execution_settings["execution_defaults"])
-    st.code(format_shell_command(preview_command))
-    if st.button("Launch Job"):
+    if not _simple_mode(workspace):
+        st.code(format_shell_command(preview_command))
+    if st.button("Start Training Job"):
         payload = _launch_managed_job(task_tokens, cwd=repo_root, run_root=Path(run_root_value), kind="train", execution_backend=str(execution_settings["execution_backend"]), nproc_per_node=int(execution_settings["nproc_per_node"]), execution_defaults=execution_settings["execution_defaults"], metadata=metadata)
         st.success(("Submitted Slurm job %s" % payload.get("job_id")) if payload.get("backend") == "slurm" else ("Started PID %d" % int(payload["pid"])))
     _render_job_history(st, Path(run_root_value), "train")
@@ -564,6 +1009,8 @@ def _render_runs(st, run_root: Path) -> None:
 
 def _render_predict_review(st, repo_root: Path, run_root: Path, data_root: Path, workspace: WorkspaceConfig, workspace_path: Path | None) -> None:
     st.header("Predict & Review")
+    if _simple_mode(workspace):
+        st.caption("Run a quick review batch to see good/bad decisions and the strongest defect signal.")
     dataset_indexes = _known_dataset_indexes(workspace, data_root)
     if not dataset_indexes:
         st.info("No dataset bundles available.")
@@ -577,7 +1024,7 @@ def _render_predict_review(st, repo_root: Path, run_root: Path, data_root: Path,
         return
     profile_id = st.selectbox("Profile", _profile_ids(workspace), index=_selectbox_index(_profile_ids(workspace), workspace.active_model_profile or "prod_fast_native"))
     profile = workspace.model_profiles[profile_id]
-    max_preview = int(st.number_input("Preview batch size", min_value=1, max_value=max(1, len(records)), value=min(8, len(records))))
+    max_preview = int(st.number_input("Samples To Review", min_value=1, max_value=max(1, len(records)), value=min(8, len(records))))
     if st.button("Run Preview Batch"):
         defect_families = tuple(read_json(Path(index.ontology_path)).get("defect_tags", ())) if Path(index.ontology_path).exists() else ()
         predictions = []
@@ -594,6 +1041,18 @@ def _render_predict_review(st, repo_root: Path, run_root: Path, data_root: Path,
         _persist_workspace(workspace, workspace_path)
         st.success("Preview saved to %s" % review_dir)
         st.write({"predictions_path": str(predictions_path), "report_path": str(report_path)})
+        st.dataframe(
+            [
+                {
+                    "sample_id": prediction.sample_id,
+                    "decision": prediction.primary_label,
+                    "score": round(float(prediction.primary_score or prediction.reject_score), 4),
+                    "top_defect": prediction.top_defect_family,
+                }
+                for prediction in predictions
+            ],
+            use_container_width=True,
+        )
         st.json(report)
     st.markdown("### Sample Preview")
     sample = records[0]
@@ -604,6 +1063,8 @@ def _render_predict_review(st, repo_root: Path, run_root: Path, data_root: Path,
 
 def _render_explain(st, run_root: Path, data_root: Path, workspace: WorkspaceConfig, workspace_path: Path | None) -> None:
     st.header("Explain")
+    if _simple_mode(workspace):
+        st.caption("Create a visual explanation bundle for one sample and inspect the saved images directly in the UI.")
     dataset_indexes = _known_dataset_indexes(workspace, data_root)
     if not dataset_indexes:
         st.info("No dataset bundles available.")
@@ -622,7 +1083,8 @@ def _render_explain(st, run_root: Path, data_root: Path, workspace: WorkspaceCon
     if st.button("Generate Explanation"):
         record = next((row for row in records if row.sample_id == sample_id), records[0])
         station_config = station_config_for_record(record, station_configs)
-        output_dir = ensure_dir(Path(run_root) / "explanations" / "%s-%s" % (profile.profile_id, record.sample_id.replace("/", "_")))
+        output_dir_name = "%s-%s" % (profile.profile_id, record.sample_id.replace("/", "_"))
+        output_dir = ensure_dir(Path(run_root) / "explanations" / output_dir_name)
         if profile.is_native:
             runtime = build_runtime_for_profile(profile, defect_families=tuple(read_json(Path(index.ontology_path)).get("defect_tags", ())) if Path(index.ontology_path).exists() else (), cache_root=workspace.cache_root, local_files_only=True)
             from greymodel.types import ModelInput
@@ -640,7 +1102,11 @@ def _render_explain(st, run_root: Path, data_root: Path, workspace: WorkspaceCon
     bundle_paths = sorted(Path(run_root).rglob("bundle.json"))
     if bundle_paths:
         selected_bundle = st.selectbox("Existing Bundle", bundle_paths, format_func=str)
-        st.json(read_json(selected_bundle))
+        bundle_payload = read_json(selected_bundle)
+        st.json(bundle_payload)
+        preview_paths = _bundle_preview_paths(bundle_payload)
+        if preview_paths:
+            st.image([str(path) for path in preview_paths], caption=[path.stem for path in preview_paths], clamp=True)
 
 
 def _render_failures(st, run_root: Path) -> None:
@@ -650,6 +1116,7 @@ def _render_failures(st, run_root: Path) -> None:
         st.info("No failure bundles found.")
         return
     selected = st.selectbox("Failure", failures, format_func=lambda row: "%s | %s | %s" % (row.timestamp, row.stage, row.error_type))
+    st.write({"stage": selected.stage, "error": selected.error_message, "variant": selected.variant, "time": selected.timestamp})
     st.json(selected.__dict__)
     traceback_path = Path(selected.traceback_path)
     if traceback_path.exists():
@@ -663,6 +1130,7 @@ def _render_settings(st, workspace: WorkspaceConfig, execution_defaults: UIExecu
         workspace.run_root = st.text_input("Run Root", workspace.run_root)
         workspace.data_root = st.text_input("Data Root", workspace.data_root)
         workspace.cache_root = st.text_input("Cache Root", workspace.cache_root)
+        workspace.ui_mode = st.selectbox("UI Mode", ["vision_engineer", "advanced"], index=_selectbox_index(["vision_engineer", "advanced"], workspace.ui_mode))
         workspace.proxy_mode = st.selectbox("Proxy Mode", ["auto", "off", "jupyter_port", "jupyter_service"], index=_selectbox_index(["auto", "off", "jupyter_port", "jupyter_service"], workspace.proxy_mode))
         defaults = _render_execution_settings(st, key_prefix="settings", execution_defaults=execution_defaults, show_nproc=True, nproc_default=execution_defaults.slurm_nproc_per_node)
         workspace.default_execution_backend = str(defaults["execution_backend"])
@@ -698,20 +1166,21 @@ def render_app(
         _inject_theme(st)
         st.sidebar.title("GreyModel")
         st.sidebar.caption("Inspection workspace")
-        st.sidebar.write({"workspace": workspace.workspace_name, "active_profile": workspace.active_model_profile, "run_root": workspace.run_root, "data_root": workspace.data_root})
+        st.sidebar.write({"workspace": workspace.workspace_name, "mode": workspace.ui_mode, "active_profile": workspace.active_model_profile, "run_root": workspace.run_root, "data_root": workspace.data_root})
         page = st.sidebar.radio("Page", PAGE_ORDER, index=0, key="gm_page")
+        repo_root = Path(__file__).resolve().parents[2]
         if page == "Home":
-            _render_home(st, workspace, run_root, data_root)
+            _render_home(st, repo_root, workspace, run_root, data_root, execution_defaults)
         elif page == "Datasets":
             _render_datasets(st, workspace, data_root, workspace_path)
         elif page == "Models":
             _render_models(st, workspace, data_root, workspace_path)
         elif page == "Train":
-            _render_train(st, repo_root=Path(__file__).resolve().parents[2], run_root=run_root, workspace=workspace, execution_defaults=execution_defaults, workspace_path=workspace_path)
+            _render_train(st, repo_root=repo_root, run_root=run_root, workspace=workspace, execution_defaults=execution_defaults, workspace_path=workspace_path)
         elif page == "Runs":
             _render_runs(st, run_root)
         elif page == "Predict & Review":
-            _render_predict_review(st, repo_root=Path(__file__).resolve().parents[2], run_root=run_root, data_root=data_root, workspace=workspace, workspace_path=workspace_path)
+            _render_predict_review(st, repo_root=repo_root, run_root=run_root, data_root=data_root, workspace=workspace, workspace_path=workspace_path)
         elif page == "Explain":
             _render_explain(st, run_root=run_root, data_root=data_root, workspace=workspace, workspace_path=workspace_path)
         elif page == "Failures":

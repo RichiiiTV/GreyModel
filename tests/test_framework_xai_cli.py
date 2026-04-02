@@ -94,6 +94,17 @@ def test_explainability_bundle_contains_heatmap_and_attribution(tmp_path: Path) 
     assert bundle["attribution_path"].exists()
     assert bundle["prediction_path"].exists()
     assert bundle["top_tiles_path"].exists()
+    assert bundle["image_path"].suffix == ".png"
+    assert bundle["valid_mask_path"].suffix == ".png"
+    assert bundle["attribution_path"].suffix == ".png"
+    assert bundle["heatmap_path"].suffix == ".png"
+    assert bundle["local_heatmap_path"].suffix == ".png"
+    assert bundle["global_heatmap_path"].suffix == ".png"
+
+    payload = json.loads(bundle["bundle_path"].read_text(encoding="utf-8"))
+    assert payload["image_path"].endswith(".png")
+    assert payload["heatmap_path"].endswith(".png")
+    assert payload["attribution_path"].endswith(".png")
 
 
 def test_cli_smoke_dataset_train_eval_explain(tmp_path: Path) -> None:

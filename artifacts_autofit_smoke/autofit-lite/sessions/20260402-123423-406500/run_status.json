@@ -1,0 +1,15 @@
+{
+  "best_checkpoint_path": null,
+  "latest_checkpoint_path": null,
+  "metrics_path": "artifacts_autofit_smoke\\autofit-lite\\metrics.jsonl",
+  "model_version": "0.2.0",
+  "run_dir": "artifacts_autofit_smoke\\autofit-lite",
+  "run_root": "artifacts_autofit_smoke",
+  "session_id": "20260402-123423-406500",
+  "stage": "autofit",
+  "started_at": "2026-04-02T12:34:23Z",
+  "status": "created",
+  "summary_path": "artifacts_autofit_smoke\\autofit-lite\\reports\\training_summary.json",
+  "updated_at": "2026-04-02T12:34:23Z",
+  "variant": "lite"
+}

@@ -1,0 +1,25 @@
+{
+  "grouping_keys": [
+    "station_id",
+    "capture_day",
+    "batch_id",
+    "camera_id"
+  ],
+  "hard_negative_ids": [],
+  "hard_negatives_path": "C:\\Users\\Ricardo\\Desktop\\GitRepos\\GreyModel\\artifacts_autofit_smoke\\autofit-lite\\autofit_datasets\\tests-3e24d333\\hard_negatives.jsonl",
+  "index_path": "C:\\Users\\Ricardo\\Desktop\\GitRepos\\GreyModel\\artifacts_autofit_smoke\\autofit-lite\\autofit_datasets\\tests-3e24d333\\dataset_index.json",
+  "manifest_path": "C:\\Users\\Ricardo\\Desktop\\GitRepos\\GreyModel\\artifacts_autofit_smoke\\autofit-lite\\autofit_datasets\\tests-3e24d333\\manifest.jsonl",
+  "manifest_version": "1.0",
+  "metadata": {
+    "created_at": "2026-04-02T12:34:23Z",
+    "num_records": 0
+  },
+  "ontology_path": "C:\\Users\\Ricardo\\Desktop\\GitRepos\\GreyModel\\artifacts_autofit_smoke\\autofit-lite\\autofit_datasets\\tests-3e24d333\\ontology.json",
+  "ontology_version": "1.0",
+  "review_subset_ids": [],
+  "root_dir": "C:\\Users\\Ricardo\\Desktop\\GitRepos\\GreyModel\\tests",
+  "split_assignments": {},
+  "split_seed": 17,
+  "splits_path": "C:\\Users\\Ricardo\\Desktop\\GitRepos\\GreyModel\\artifacts_autofit_smoke\\autofit-lite\\autofit_datasets\\tests-3e24d333\\splits.json",
+  "station_configs": {}
+}

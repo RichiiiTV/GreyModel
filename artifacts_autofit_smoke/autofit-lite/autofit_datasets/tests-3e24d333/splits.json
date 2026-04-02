@@ -1,0 +1,16 @@
+{
+  "assignments": {},
+  "generated_at": "2026-04-02T12:34:23Z",
+  "grouping_keys": [
+    "station_id",
+    "capture_day",
+    "batch_id",
+    "camera_id"
+  ],
+  "ratios": [
+    0.7,
+    0.15,
+    0.15
+  ],
+  "seed": 17
+}

@@ -93,6 +93,20 @@ The UI is:
 - file-backed
 - workspace-backed via `<run_root>/workspace.json` unless overridden with `--workspace-path`
 
+The default UI mode is now `vision_engineer`:
+
+- simpler labels
+- an `Automated Training` launcher on `Home` and `Train`
+- a short default path: `Data` -> `Model` -> `Start Automated Training`
+- live log tail and automatic refresh while AutoFit is running
+- current performance cards for train loss, validation loss, learning rate, throughput, and validation AUROC
+- guided workflow wording
+- direct preview tables for predictions
+- direct image preview for explanation bundles
+- advanced model/profile editing hidden by default
+
+If you need the full low-level profile editor, switch the workspace `UI Mode` to `advanced` in the `Settings` page.
+
 The UI process always runs locally. Slurm integration only affects the jobs launched from the compute pages.
 
 For Jupyter or HPC use:
@@ -114,6 +128,8 @@ Shows:
 - recent failure summaries
 - active workspace summary
 - active model profile summary
+- a simplified `Automated Training` launcher for labeled production data
+- a live AutoFit monitor that refreshes on its own and keeps the latest log output and current metrics visible
 
 ### Datasets
 
@@ -142,7 +158,22 @@ The built-in native profiles are:
 
 ### Train
 
-Provides launch forms for:
+In `vision_engineer` mode, this page defaults to the AutoFit launcher:
+
+- select data
+- select `base` or `lite`
+- start one automated workflow that ingests or reuses the bundle, checks splits, finetunes, calibrates, and benchmarks
+- watch the stage, current epoch, global step, log tail, train loss, validation loss, learning rate, throughput, and final validation metrics without leaving the page
+
+The default simple path is intentionally short:
+
+1. Set the data path.
+2. Set the model.
+3. Press `Start Automated Training`.
+
+Everything else stays under `Advanced`, including execution backend overrides, resource settings, and hyperparameters.
+
+In `advanced` mode, it still provides launch forms for:
 
 - pretrain
 - domain-adapt

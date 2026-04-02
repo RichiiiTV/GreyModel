@@ -21,6 +21,24 @@ The framework exposes two inference lanes:
 - `prod_fast_native`: a production-oriented native cascade with a full-frame screen stage and a patch/MIL refiner for uncertain samples.
 - review backends: `review_native_base`, `review_native_lite`, and Hugging Face profiles for richer offline inspection and comparison.
 
+## Settings And Environment
+
+GreyModel now keeps a persistent local home so model handling is less manual:
+
+- default home: `~/.greymodel` or `%USERPROFILE%\\.greymodel`
+- override home: `GREYMODEL_HOME`
+- persisted defaults: profile registry, cache root, run root, data root, and active profile
+
+Inspect the resolved environment, dependencies, and available profiles with:
+
+```bash
+python -m greymodel env doctor
+```
+
+For Python workflows, the high-level `GreyModel(...)` wrapper is the simplest entrypoint when you want Ultralytics-style behavior instead of low-level profile plumbing.
+
+It now includes `GreyModel.fit(...)` for labeled production data. This is the recommended automation path when a vision engineer wants to point at data, choose `base` or `lite`, optionally override a few hyperparameters, and let the framework handle the rest.
+
 ## End-To-End Workflow
 
 ### 1. Build a dataset bundle
@@ -66,6 +84,41 @@ Registered profiles can then be used with `--model-profile hf_cls` on `predict`,
 For production screening, prefer `--model-profile prod_fast_native`.
 
 ### 2. Train
+
+Recommended labeled-data path:
+
+```bash
+python -m greymodel auto fit \
+  --data /path/to/labeled_images \
+  --model lite \
+  --run-root artifacts \
+  --epochs 20 \
+  --batch-size 8 \
+  --learning-rate 1e-3 \
+  --num-workers 4
+```
+
+AutoFit:
+
+- accepts a raw labeled folder or an existing `manifest.jsonl`
+- builds or reuses the dataset bundle
+- ensures `train` and `val` splits exist
+- runs finetuning
+- calibrates station thresholds
+- benchmarks the validation split
+- writes `autofit.log`, `autofit_summary.json`, and `autofit_summary.md`
+
+Dry-run the resolved workflow:
+
+```bash
+python -m greymodel auto plan --data /path/to/labeled_images --model lite --run-root artifacts
+```
+
+Resume a failed or interrupted AutoFit run:
+
+```bash
+python -m greymodel auto resume --run-dir artifacts/autofit-lite
+```
 
 Pretrain:
 

@@ -40,6 +40,46 @@ pip install -e .[framework]
 
 The `framework` extra includes PyTorch, `datasets`, Hugging Face Transformers, Captum, Pillow, tqdm, and Streamlit.
 
+## Ultralytics-Style Handling
+
+GreyModel now keeps a persistent local home, similar to how Ultralytics keeps model settings and cache behavior predictable.
+
+- default home: `~/.greymodel` on Linux/macOS or `%USERPROFILE%\\.greymodel` on Windows
+- override home: set `GREYMODEL_HOME`
+- persisted defaults: model registry, cache root, run root, data root, active profile
+- built-in profiles are created automatically on first use
+
+Inspect the resolved environment:
+
+```bash
+python -m greymodel env doctor
+```
+
+Use the high-level Python API when you do not want to manually manage profiles, registry paths, or cache roots:
+
+```python
+from greymodel import GreyModel
+import numpy as np
+
+model = GreyModel("lite")  # alias for review_native_lite
+prediction = model.predict(np.zeros((32, 32), dtype=np.uint8), station_id="station-01", geometry_mode="rect")
+bundle = model.explain(np.zeros((32, 32), dtype=np.uint8), "artifacts/demo_explain", station_id="station-01", geometry_mode="rect")
+latency = model.benchmark(np.zeros((256, 256), dtype=np.uint8), station_id="station-01", geometry_mode="rect")
+result = model.fit(
+    "/path/to/labeled_images",
+    model="lite",
+    execution="local",
+    overrides={"epochs": 20, "batch_size": 8, "learning_rate": 1e-3},
+)
+```
+
+The `GreyModel(...)` wrapper is the recommended entrypoint when you want handling closer to Ultralytics:
+
+- one object for predict, explain, benchmark, train, validation, and AutoFit
+- profile aliases like `fast`, `base`, and `lite`
+- automatic settings home and default profile registry
+- automatic cache-root reuse for Hugging Face models
+
 ## Documentation
 
 - [Framework Guide](docs/framework.md)
@@ -61,6 +101,39 @@ This scans a folder tree of production images, normalizes it into the internal m
 python -m greymodel dataset build /path/to/production_images --output-dir data/production
 python -m greymodel dataset validate data/production/manifest.jsonl
 python -m greymodel dataset ontology --manifest data/production/manifest.jsonl
+```
+
+AutoFit for labeled production data:
+
+This is the recommended operator workflow. Point GreyModel at a labeled folder or an existing `manifest.jsonl`, choose `base` or `lite`, and let it handle ingest, split checks, finetuning, calibration, benchmarking, and final reporting.
+
+```bash
+python -m greymodel auto plan \
+  --data /path/to/labeled_images \
+  --model lite \
+  --run-root artifacts
+
+python -m greymodel auto fit \
+  --data /path/to/labeled_images \
+  --model lite \
+  --run-root artifacts \
+  --epochs 20 \
+  --batch-size 8 \
+  --learning-rate 1e-3 \
+  --num-workers 4
+```
+
+Each AutoFit run writes:
+
+- `autofit.log`: a human-readable progress log
+- `autofit_summary.json`: a machine-readable summary
+- `autofit_summary.md`: a short operator summary
+- best/latest checkpoints plus calibration and benchmark reports
+
+Resume an interrupted AutoFit run with:
+
+```bash
+python -m greymodel auto resume --run-dir artifacts/autofit-lite
 ```
 
 Import a public pretraining bundle:
@@ -159,7 +232,7 @@ python -m greymodel predict \
 
 Single-sample explainability:
 
-This generates a local audit bundle for one image, including the prediction payload, heatmap, attribution artifacts, and top-tile evidence.
+This generates a local audit bundle for one image, including the prediction payload, viewable image artifacts for the original frame, masks, heatmaps, attributions, and top-tile evidence.
 
 ```bash
 python -m greymodel explain sample \
@@ -172,7 +245,7 @@ python -m greymodel explain sample \
 
 Local UI:
 
-This launches the local Streamlit operator UI for browsing datasets, models, runs, failures, reports, and explanations. The UI process itself stays local. From inside the UI, the `Train` page can launch local subprocesses or submit GPU jobs to Slurm, while `Predict & Review` and `Explain` support native GreyModel profiles and registered Hugging Face profiles from the workspace.
+This launches the local Streamlit operator UI for browsing datasets, models, runs, failures, reports, and explanations. The default UI mode now targets a vision-engineer workflow instead of a data-science workflow: you mostly just set `Data`, set `Model`, and press `Start Automated Training`. The app then keeps the current stage, live log tail, train loss, validation loss, learning rate, throughput, and final validation metrics on screen while AutoFit is running. The UI process itself stays local. From inside the UI, AutoFit and the other compute pages can launch local subprocesses or submit GPU jobs to Slurm, while `Predict & Review` and `Explain` support native GreyModel profiles and registered Hugging Face profiles from the workspace.
 
 ```bash
 python -m greymodel ui --run-root artifacts --data-root data
@@ -270,6 +343,9 @@ Dataset:
 
 Training:
 
+- `python -m greymodel auto fit ...`: Recommended one-command labeled-data workflow. It builds or reuses the manifest, ensures `train` and `val` splits, finetunes, calibrates, benchmarks, and writes an operator summary.
+- `python -m greymodel auto plan ...`: Show the resolved AutoFit workflow before you run it.
+- `python -m greymodel auto resume ...`: Resume an interrupted AutoFit run from the latest usable checkpoint.
 - `python -m greymodel train pretrain ...`: Run public-data self-supervised pretraining to teach the backbone general grayscale defect structure before production supervision.
 - `python -m greymodel train domain-adapt ...`: Adapt the pretrained model to unlabeled production imagery so it better matches the real station distribution.
 - `python -m greymodel train finetune ...`: Run supervised training on labeled production images to learn final reject scoring and defect-family behavior.

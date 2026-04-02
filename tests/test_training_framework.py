@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import inspect
 from pathlib import Path
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -272,6 +274,45 @@ def test_pretraining_stage_writes_checkpoint_and_metrics(tmp_path: Path) -> None
     checkpoint = torch.load(result.checkpoint_path, map_location="cpu")
     assert isinstance(checkpoint, dict)
     assert checkpoint
+
+
+def test_python_module_entrypoint_prints_stage_result_json_for_pretrain(tmp_path: Path) -> None:
+    manifest = _build_training_manifest(tmp_path)
+    repo_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "greymodel",
+            "train",
+            "pretrain",
+            "--manifest",
+            str(manifest),
+            "--variant",
+            "lite",
+            "--run-root",
+            str(tmp_path / "runs"),
+            "--batch-size",
+            "1",
+            "--num-workers",
+            "0",
+            "--no-progress",
+            "--pretrain-crop-scales",
+            "0.75",
+            "1.0",
+        ],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["stage"] == "pretrain"
+    assert payload["variant"] == "lite"
+    assert Path(payload["run_dir"]).exists()
+    assert Path(payload["metrics_path"]).exists()
 
 
 def test_resume_from_checkpoint_restores_progress_metadata(tmp_path: Path) -> None:

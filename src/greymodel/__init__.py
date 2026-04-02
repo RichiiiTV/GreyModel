@@ -1,6 +1,7 @@
 """Public package surface for the grayscale inspection framework."""
 
 from .api import BaseModel, LiteModel
+from .autofit import AutoFitPlan, AutoFitResult, resolve_autofit_plan, resume_autofit, run_autofit
 from .calibration import CalibratedStationDecision, StationCalibration, StationCalibrator
 from .cli import cli_main
 from .data import (
@@ -23,6 +24,7 @@ from .data import (
     register_synthetic_recipe,
     validate_dataset_manifest,
 )
+from .engine import GreyModel
 from .evaluation import (
     benchmark_manifest,
     build_calibration_report,
@@ -69,6 +71,18 @@ from .runners import (
     run_resume_stage,
 )
 from .synthetic import DefectInjection, inject_defect, inject_particle, inject_scratch, inject_streak
+from .settings import (
+    GREYMODEL_HOME_ENV,
+    SETTINGS_FILENAME,
+    GreyModelSettings,
+    build_environment_report,
+    default_greymodel_home,
+    default_settings,
+    ensure_settings,
+    load_settings,
+    save_settings,
+    settings_path,
+)
 from .tiling import TileCoverage, TileGrid, build_tile_grid, compute_tile_coverage, verify_defect_coverage
 from .tracking import (
     RunContext,
@@ -104,6 +118,8 @@ from .ui import launch_streamlit_ui
 from .version import __version__
 
 __all__ = [
+    "AutoFitPlan",
+    "AutoFitResult",
     "BaseModel",
     "BoxAnnotation",
     "build_audit_report",
@@ -132,6 +148,8 @@ __all__ = [
     "export_model_graph",
     "FailureRecord",
     "GeometryMode",
+    "GreyModel",
+    "GreyModelSettings",
     "get_pretrain_dataset_preset",
     "GreyInspectionDataset",
     "HuggingFaceClassificationAdapter",
@@ -175,7 +193,10 @@ __all__ = [
     "preprocess_sample",
     "register_model_profile",
     "register_synthetic_recipe",
+    "resolve_autofit_plan",
+    "resume_autofit",
     "RunContext",
+    "run_autofit",
     "run_batch_prediction_stage",
     "run_benchmark_stage",
     "run_calibration_stage",
@@ -208,10 +229,19 @@ __all__ = [
     "write_failure_bundle",
     "write_summary",
     "build_huggingface_model_backend",
+    "build_environment_report",
+    "default_greymodel_home",
+    "default_settings",
     "delete_model_profile",
+    "ensure_settings",
+    "GREYMODEL_HOME_ENV",
     "ensure_default_model_profiles",
+    "load_settings",
     "model_profile_path",
     "model_profile_registry_dir",
+    "save_settings",
     "save_model_profile",
+    "settings_path",
+    "SETTINGS_FILENAME",
     "__version__",
 ]

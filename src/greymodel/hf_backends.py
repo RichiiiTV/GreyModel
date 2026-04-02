@@ -85,6 +85,27 @@ def _stable_logit(probability: float) -> float:
     return float(np.log(probability / (1.0 - probability)))
 
 
+def _load_native_checkpoint(model, checkpoint_path: str | Path | None) -> None:
+    normalized = _normalized_text(checkpoint_path) if checkpoint_path else ""
+    if not normalized:
+        return
+    state_path = Path(normalized)
+    if not state_path.exists():
+        return
+    torch = _require_torch()
+    payload = torch.load(state_path, map_location="cpu", weights_only=False)
+    if isinstance(payload, Mapping) and "model_state" in payload:
+        payload = payload["model_state"]
+    elif isinstance(payload, Mapping) and "backbone" in payload:
+        payload = payload["backbone"]
+    if isinstance(payload, Mapping) and "state_dict" in payload:
+        payload = payload["state_dict"]
+    backend = getattr(model, "backend", None)
+    torch_model = getattr(backend, "model", None)
+    if torch_model is not None and isinstance(payload, Mapping):
+        torch_model.load_state_dict(payload, strict=False)
+
+
 def _heatmap_from_image(prepared_image: np.ndarray, valid_mask: np.ndarray) -> np.ndarray:
     image = np.asarray(prepared_image, dtype=np.float32)
     image = np.abs(image - float(np.mean(image[valid_mask > 0])) if np.any(valid_mask) else image)
@@ -577,8 +598,12 @@ def build_huggingface_model_backend(
                 num_stations=num_stations,
             )
         if variant == "lite":
-            return LiteModel(num_defect_families=num_defect_families, defect_families=defect_families, num_stations=num_stations)
-        return BaseModel(num_defect_families=num_defect_families, defect_families=defect_families, num_stations=num_stations)
+            model = LiteModel(num_defect_families=num_defect_families, defect_families=defect_families, num_stations=num_stations)
+            _load_native_checkpoint(model, loaded_profile.local_path)
+            return model
+        model = BaseModel(num_defect_families=num_defect_families, defect_families=defect_families, num_stations=num_stations)
+        _load_native_checkpoint(model, loaded_profile.local_path)
+        return model
     if task_type == "classification":
         return HuggingFaceClassificationAdapter(
             loaded_profile,

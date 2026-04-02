@@ -1,0 +1,27 @@
+{
+  "best_checkpoint_path": null,
+  "config_snapshot_path": null,
+  "epoch": 0,
+  "error_message": "AutoFit requires at least two labeled samples to create train/val splits.",
+  "error_type": "ValueError",
+  "failure_dir": "artifacts_autofit_smoke\\autofit-lite\\sessions\\20260402-123423-914200\\failures\\autofit-20260402-123423",
+  "failure_id": "autofit-20260402-123423",
+  "global_step": 0,
+  "index_path": null,
+  "latest_checkpoint_path": null,
+  "manifest_path": "tests",
+  "metadata": {
+    "command": "auto",
+    "model_version": "0.2.0"
+  },
+  "metrics_path": null,
+  "offending_sample_ids": [],
+  "partial_artifacts": {},
+  "resume_metadata": {},
+  "run_dir": "artifacts_autofit_smoke\\autofit-lite",
+  "stage": "autofit",
+  "status": "failed",
+  "timestamp": "2026-04-02T12:34:23Z",
+  "traceback_path": "artifacts_autofit_smoke\\autofit-lite\\sessions\\20260402-123423-914200\\failures\\autofit-20260402-123423\\traceback.txt",
+  "variant": "lite"
+}

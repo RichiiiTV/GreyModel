@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "C:\Users\Ricardo\Desktop\GitRepos\GreyModel\src\greymodel\cli.py", line 996, in cli_main
+    return args.func(args)
+  File "C:\Users\Ricardo\Desktop\GitRepos\GreyModel\src\greymodel\cli.py", line 664, in _cmd_auto_plan
+    result = resolve_autofit_plan(
+  File "C:\Users\Ricardo\Desktop\GitRepos\GreyModel\src\greymodel\autofit.py", line 363, in resolve_autofit_plan
+    manifest_path, index_path, bundle_dir, validation, data_metadata = _resolve_data_bundle(
+  File "C:\Users\Ricardo\Desktop\GitRepos\GreyModel\src\greymodel\autofit.py", line 339, in _resolve_data_bundle
+    _ensure_train_val_split(manifest_path, index_path=index_path, split_policy=split_policy)
+  File "C:\Users\Ricardo\Desktop\GitRepos\GreyModel\src\greymodel\autofit.py", line 208, in _ensure_train_val_split
+    records = _force_minimum_train_val_split(records)
+  File "C:\Users\Ricardo\Desktop\GitRepos\GreyModel\src\greymodel\autofit.py", line 147, in _force_minimum_train_val_split
+    raise ValueError("AutoFit requires at least two labeled samples to create train/val splits.")
+ValueError: AutoFit requires at least two labeled samples to create train/val splits.
