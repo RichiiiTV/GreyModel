@@ -694,5 +694,19 @@ def main(argv: list[str] | None = None) -> None:
     )
 
 
-if __name__ == "__main__":
+def _running_inside_streamlit() -> bool:
+    try:
+        from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
+    except Exception:
+        try:
+            from streamlit.runtime.scriptrunner import get_script_run_ctx  # type: ignore
+        except Exception:
+            return False
+    try:
+        return get_script_run_ctx() is not None
+    except Exception:
+        return False
+
+
+if __name__ == "__main__" or _running_inside_streamlit():
     main(sys.argv[1:])

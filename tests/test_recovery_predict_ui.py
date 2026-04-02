@@ -7,6 +7,7 @@ import types
 
 import numpy as np
 import pytest
+from streamlit.testing.v1 import AppTest
 
 from greymodel import (
     build_dataset_manifest,
@@ -219,6 +220,18 @@ def test_ui_dry_run_and_render_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyP
         fake_st = _FakeStreamlit(page)
         monkeypatch.setitem(sys.modules, "streamlit", fake_st)
         render_app(run_root=tmp_path / "runs", data_root=data_root)
+
+
+def test_streamlit_runner_executes_ui_script(tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    _build_manifest(data_root)
+
+    app = AppTest.from_file("src/greymodel/ui_app.py", default_timeout=15)
+    app.run(timeout=15)
+
+    assert len(app.exception) == 0
+    assert len(app.sidebar.radio) == 1
+    assert len(app.markdown) > 0
 
 
 def test_ui_dry_run_carries_slurm_defaults(tmp_path: Path) -> None:
