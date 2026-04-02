@@ -408,6 +408,8 @@ def build_parser() -> argparse.ArgumentParser:
     ui.add_argument("--slurm-queue", default="")
     ui.add_argument("--slurm-nproc-per-node", type=int, default=8)
     ui.add_argument("--slurm-python", default=None)
+    ui.add_argument("--disable-cors", action="store_true")
+    ui.add_argument("--disable-xsrf-protection", action="store_true")
     ui.add_argument("--dry-run", action="store_true")
     ui.set_defaults(func=_cmd_ui)
     return parser
@@ -748,6 +750,8 @@ def _cmd_ui(args: argparse.Namespace):
         slurm_queue=args.slurm_queue,
         slurm_nproc_per_node=args.slurm_nproc_per_node,
         slurm_python=args.slurm_python,
+        enable_cors=not bool(args.disable_cors),
+        enable_xsrf_protection=not bool(args.disable_xsrf_protection),
     )
 
 

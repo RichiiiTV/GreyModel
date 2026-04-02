@@ -160,39 +160,50 @@ def resolve_ui_proxy_configuration(
 
     default_bind_address = "127.0.0.1"
     default_bind_port = 8501
-    resolved_base_url_path = _normalized_optional_text(base_url_path)
+    requested_base_url_path = _normalized_optional_text(base_url_path)
+    resolved_base_url_path = requested_base_url_path
     display_path = "/"
 
     if detected_mode == "jupyter_service":
         default_bind_address = parsed_service_url.hostname if parsed_service_url and parsed_service_url.hostname else "127.0.0.1"
         default_bind_port = parsed_service_url.port if parsed_service_url and parsed_service_url.port else 8501
-        resolved_base_url_path = resolved_base_url_path or env_service_prefix or (parsed_service_url.path if parsed_service_url else None)
-        display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True)
     elif detected_mode == "jupyter_port":
         default_bind_address = "0.0.0.0"
         default_bind_port = 8501
-        display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True) if resolved_base_url_path else "/"
-    else:
-        display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True) if resolved_base_url_path else "/"
 
     final_bind_address = _normalized_optional_text(bind_address) or default_bind_address
     final_bind_port = int(bind_port if bind_port is not None else default_bind_port)
+    if detected_mode == "jupyter_service":
+        resolved_base_url_path = requested_base_url_path or env_service_prefix or (parsed_service_url.path if parsed_service_url else None)
+        display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True)
+    elif detected_mode == "jupyter_port":
+        resolved_base_url_path = requested_base_url_path or posixpath.join(_infer_notebook_base_path(resolved_env), "proxy", str(final_bind_port))
+        display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True)
+    else:
+        resolved_base_url_path = requested_base_url_path
+        display_path = _normalize_url_path(resolved_base_url_path, trailing_slash=True) if resolved_base_url_path else "/"
     streamlit_base_url_path = _to_streamlit_base_url_path(resolved_base_url_path)
 
     browser_host, browser_port = _extract_browser_target(public_base_url)
+    local_display_host = "127.0.0.1" if final_bind_address in {"0.0.0.0", "::"} else final_bind_address
+    if browser_host is None and detected_mode == "jupyter_service" and parsed_service_url is not None and parsed_service_url.hostname is not None:
+        browser_host = parsed_service_url.hostname
+    if browser_port is None and detected_mode == "jupyter_service" and parsed_service_url is not None and parsed_service_url.port is not None:
+        browser_port = int(parsed_service_url.port)
+    if browser_host is None and detected_mode == "off":
+        browser_host = local_display_host
+    if browser_port is None and detected_mode == "off":
+        browser_port = final_bind_port
     final_browser_server_address = _normalized_optional_text(browser_server_address) or browser_host
     final_browser_server_port = int(browser_server_port) if browser_server_port is not None else browser_port
 
-    local_display_host = "127.0.0.1" if final_bind_address in {"0.0.0.0", "::"} else final_bind_address
     local_url = "http://%s:%d/" % (local_display_host, final_bind_port)
     if streamlit_base_url_path:
         local_url += streamlit_base_url_path.rstrip("/") + "/"
 
     normalized_public_base_url = _normalized_optional_text(public_base_url)
-    if detected_mode == "jupyter_service":
-        proxy_url = _join_public_location(normalized_public_base_url, display_path)
-    elif detected_mode == "jupyter_port":
-        proxy_url = _join_public_location(normalized_public_base_url or _infer_notebook_base_path(resolved_env), "proxy/%d/" % final_bind_port)
+    if detected_mode in {"jupyter_service", "jupyter_port"}:
+        proxy_url = _join_public_location(normalized_public_base_url, display_path) if normalized_public_base_url else display_path
     else:
         proxy_url = _join_public_location(normalized_public_base_url, display_path) if normalized_public_base_url else local_url
 
@@ -285,6 +296,8 @@ def build_streamlit_command(
     slurm_queue: str = "",
     slurm_nproc_per_node: int = 8,
     slurm_python: str | Path | None = sys.executable,
+    enable_cors: bool = True,
+    enable_xsrf_protection: bool = True,
     env: Mapping[str, str] | None = None,
 ) -> list[str]:
     resolved_slurm_python = sys.executable if slurm_python is None else slurm_python
@@ -308,6 +321,8 @@ def build_streamlit_command(
         "--server.headless=%s" % ("true" if headless else "false"),
         "--server.address=%s" % resolved_proxy.bind_address,
         "--server.port=%d" % int(resolved_proxy.bind_port),
+        "--server.enableCORS=%s" % ("true" if enable_cors else "false"),
+        "--server.enableXsrfProtection=%s" % ("true" if enable_xsrf_protection else "false"),
     ]
     if resolved_proxy.base_url_path:
         command.append("--server.baseUrlPath=%s" % resolved_proxy.base_url_path)
@@ -373,6 +388,8 @@ def launch_ui(
     slurm_queue: str = "",
     slurm_nproc_per_node: int = 8,
     slurm_python: str | Path | None = sys.executable,
+    enable_cors: bool = True,
+    enable_xsrf_protection: bool = True,
 ) -> dict[str, object]:
     return launch_streamlit_ui(
         run_root=run_root,
@@ -397,6 +414,8 @@ def launch_ui(
         slurm_queue=slurm_queue,
         slurm_nproc_per_node=slurm_nproc_per_node,
         slurm_python=slurm_python,
+        enable_cors=enable_cors,
+        enable_xsrf_protection=enable_xsrf_protection,
         dry_run=False,
     )
 
@@ -426,6 +445,8 @@ def launch_streamlit_ui(
     slurm_queue: str = "",
     slurm_nproc_per_node: int = 8,
     slurm_python: str | Path | None = sys.executable,
+    enable_cors: bool = True,
+    enable_xsrf_protection: bool = True,
     env: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     resolved_slurm_python = sys.executable if slurm_python is None else slurm_python
@@ -459,6 +480,8 @@ def launch_streamlit_ui(
         slurm_queue=slurm_queue,
         slurm_nproc_per_node=slurm_nproc_per_node,
         slurm_python=resolved_slurm_python,
+        enable_cors=enable_cors,
+        enable_xsrf_protection=enable_xsrf_protection,
         env=env,
     )
     payload = {
@@ -480,6 +503,8 @@ def launch_streamlit_ui(
         "slurm_queue": str(slurm_queue),
         "slurm_nproc_per_node": int(slurm_nproc_per_node),
         "slurm_python": str(resolved_slurm_python),
+        "enable_cors": bool(enable_cors),
+        "enable_xsrf_protection": bool(enable_xsrf_protection),
         "proxy_mode": resolved_proxy.proxy_mode,
         "public_base_url": resolved_proxy.public_base_url,
         "base_url_path": resolved_proxy.base_url_path,

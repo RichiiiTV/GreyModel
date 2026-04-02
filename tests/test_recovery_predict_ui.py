@@ -369,6 +369,8 @@ def test_resolve_ui_proxy_auto_port_and_service_modes() -> None:
     assert off.bind_address == "127.0.0.1"
     assert off.base_url_path == ""
     assert off.proxy_url == off.local_url
+    assert off.browser_server_address == "127.0.0.1"
+    assert off.browser_server_port == 8501
 
     notebook = resolve_ui_proxy_configuration(
         proxy_mode="auto",
@@ -377,7 +379,7 @@ def test_resolve_ui_proxy_auto_port_and_service_modes() -> None:
     )
     assert notebook.proxy_mode == "jupyter_port"
     assert notebook.bind_address == "0.0.0.0"
-    assert notebook.base_url_path == ""
+    assert notebook.base_url_path == "user/ricardo/proxy/8899"
     assert notebook.proxy_url == "/user/ricardo/proxy/8899/"
 
     service = resolve_ui_proxy_configuration(
@@ -409,7 +411,24 @@ def test_build_streamlit_command_emits_hpc_proxy_flags() -> None:
     assert "--server.baseUrlPath=services/greymodel" in command
     assert "--browser.serverAddress=cluster.example.org" in command
     assert "--browser.serverPort=443" in command
+    assert "--server.enableCORS=true" in command
+    assert "--server.enableXsrfProtection=true" in command
     assert command.index("--server.baseUrlPath=services/greymodel") < command.index("--")
+
+
+def test_build_streamlit_command_can_disable_cors_and_xsrf() -> None:
+    command = build_streamlit_command(
+        proxy_mode="jupyter_port",
+        bind_address="0.0.0.0",
+        bind_port=8501,
+        enable_cors=False,
+        enable_xsrf_protection=False,
+        env={"JPY_PARENT_PID": "1", "JUPYTERHUB_SERVICE_PREFIX": "/user/ricardo/"},
+    )
+
+    assert "--server.baseUrlPath=user/ricardo/proxy/8501" in command
+    assert "--server.enableCORS=false" in command
+    assert "--server.enableXsrfProtection=false" in command
 
 
 def test_ui_dry_run_prefers_explicit_proxy_override_and_prints_url(capsys: pytest.CaptureFixture[str]) -> None:

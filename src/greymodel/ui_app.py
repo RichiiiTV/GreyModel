@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 from dataclasses import asdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -46,8 +47,40 @@ def _parse_args(argv: list[str] | None = None):
     return parser.parse_known_args(argv)
 
 
-def _find_dataset_indexes(data_root: Path) -> list[Path]:
-    return sorted(data_root.rglob("dataset_index.json"))
+@lru_cache(maxsize=32)
+def _scan_dataset_indexes_cached(data_root_value: str, deep: bool = False) -> tuple[str, ...]:
+    data_root = Path(data_root_value)
+    if not data_root.exists():
+        return ()
+    if deep:
+        return tuple(sorted(str(path) for path in data_root.rglob("dataset_index.json")))
+    patterns = (
+        "dataset_index.json",
+        "*/dataset_index.json",
+        "*/*/dataset_index.json",
+        "*/*/*/dataset_index.json",
+    )
+    discovered: set[str] = set()
+    for pattern in patterns:
+        for path in data_root.glob(pattern):
+            discovered.add(str(path))
+    return tuple(sorted(discovered))
+
+
+def _find_dataset_indexes(data_root: Path, *, deep: bool = False) -> list[Path]:
+    return [Path(value) for value in _scan_dataset_indexes_cached(str(data_root), deep=deep)]
+
+
+def _known_dataset_indexes(workspace: WorkspaceConfig, data_root: Path) -> list[Path]:
+    discovered = {path for path in _find_dataset_indexes(data_root, deep=False)}
+    active_candidates = [workspace.active_dataset_index, *workspace.recent_dataset_indexes]
+    for candidate in active_candidates:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        if path.exists():
+            discovered.add(path)
+    return sorted(discovered)
 
 
 def _job_root(run_root: Path) -> Path:
@@ -334,7 +367,7 @@ def _render_home(st, workspace: WorkspaceConfig, run_root: Path, data_root: Path
     st.markdown('<div class="gm-subtitle">A polished operator console for datasets, models, runs, prediction review, and failures.</div>', unsafe_allow_html=True)
     runs = list_run_statuses(run_root)
     failures = list_failure_records(run_root)
-    datasets = _find_dataset_indexes(data_root)
+    datasets = _known_dataset_indexes(workspace, data_root)
     profile = _active_profile(workspace)
     cols = st.columns(4)
     _metric_card(cols[0], "Datasets", len(datasets), "Detected bundles")
@@ -355,7 +388,11 @@ def _render_home(st, workspace: WorkspaceConfig, run_root: Path, data_root: Path
 
 def _render_datasets(st, workspace: WorkspaceConfig, data_root: Path, workspace_path: Path | None) -> None:
     st.header("Datasets")
-    dataset_indexes = _find_dataset_indexes(data_root)
+    if st.button("Deep Scan Dataset Root", key="gm_dataset_deep_scan"):
+        _scan_dataset_indexes_cached.cache_clear()
+        dataset_indexes = _find_dataset_indexes(data_root, deep=True)
+    else:
+        dataset_indexes = _known_dataset_indexes(workspace, data_root)
     if not dataset_indexes:
         st.info("No dataset bundles found under %s." % data_root)
         return
@@ -454,7 +491,7 @@ def _render_models(st, workspace: WorkspaceConfig, data_root: Path, workspace_pa
         workspace = delete_model_profile(workspace, selected_id)
         _persist_workspace(workspace, workspace_path)
         st.warning("Profile deleted.")
-    dataset_indexes = _find_dataset_indexes(data_root)
+    dataset_indexes = _known_dataset_indexes(workspace, data_root)
     if dataset_indexes:
         benchmark_choice = st.selectbox("Benchmark dataset", dataset_indexes, format_func=lambda path: str(path.relative_to(data_root)))
         if st.button("Run Latency Benchmark"):
@@ -527,7 +564,7 @@ def _render_runs(st, run_root: Path) -> None:
 
 def _render_predict_review(st, repo_root: Path, run_root: Path, data_root: Path, workspace: WorkspaceConfig, workspace_path: Path | None) -> None:
     st.header("Predict & Review")
-    dataset_indexes = _find_dataset_indexes(data_root)
+    dataset_indexes = _known_dataset_indexes(workspace, data_root)
     if not dataset_indexes:
         st.info("No dataset bundles available.")
         return
@@ -567,7 +604,7 @@ def _render_predict_review(st, repo_root: Path, run_root: Path, data_root: Path,
 
 def _render_explain(st, run_root: Path, data_root: Path, workspace: WorkspaceConfig, workspace_path: Path | None) -> None:
     st.header("Explain")
-    dataset_indexes = _find_dataset_indexes(data_root)
+    dataset_indexes = _known_dataset_indexes(workspace, data_root)
     if not dataset_indexes:
         st.info("No dataset bundles available.")
         return
@@ -651,37 +688,44 @@ def render_app(
     workspace_path: Path | str | None = None,
 ) -> None:
     import streamlit as st
-
-    run_root = Path(run_root)
-    data_root = Path(data_root)
-    workspace_path = Path(workspace_path) if workspace_path is not None else workspace_path_for(run_root)
-    workspace = load_workspace(run_root=run_root, data_root=data_root, workspace_path=workspace_path)
-    execution_defaults = execution_defaults or _execution_defaults_from_workspace(workspace)
-    st.set_page_config(page_title="GreyModel", layout="wide", initial_sidebar_state="expanded")
-    _inject_theme(st)
-    st.sidebar.title("GreyModel")
-    st.sidebar.caption("Inspection workspace")
-    st.sidebar.write({"workspace": workspace.workspace_name, "active_profile": workspace.active_model_profile, "run_root": workspace.run_root, "data_root": workspace.data_root})
-    page = st.sidebar.radio("Page", PAGE_ORDER, index=0, key="gm_page")
-    if page == "Home":
-        _render_home(st, workspace, run_root, data_root)
-    elif page == "Datasets":
-        _render_datasets(st, workspace, data_root, workspace_path)
-    elif page == "Models":
-        _render_models(st, workspace, data_root, workspace_path)
-    elif page == "Train":
-        _render_train(st, repo_root=Path(__file__).resolve().parents[2], run_root=run_root, workspace=workspace, execution_defaults=execution_defaults, workspace_path=workspace_path)
-    elif page == "Runs":
-        _render_runs(st, run_root)
-    elif page == "Predict & Review":
-        _render_predict_review(st, repo_root=Path(__file__).resolve().parents[2], run_root=run_root, data_root=data_root, workspace=workspace, workspace_path=workspace_path)
-    elif page == "Explain":
-        _render_explain(st, run_root=run_root, data_root=data_root, workspace=workspace, workspace_path=workspace_path)
-    elif page == "Failures":
-        _render_failures(st, run_root)
-    else:
-        workspace, execution_defaults = _render_settings(st, workspace, execution_defaults, workspace_path)
-        _persist_workspace(workspace, workspace_path)
+    try:
+        run_root = Path(run_root)
+        data_root = Path(data_root)
+        workspace_path = Path(workspace_path) if workspace_path is not None else workspace_path_for(run_root)
+        workspace = load_workspace(run_root=run_root, data_root=data_root, workspace_path=workspace_path)
+        execution_defaults = execution_defaults or _execution_defaults_from_workspace(workspace)
+        st.set_page_config(page_title="GreyModel", layout="wide", initial_sidebar_state="expanded")
+        _inject_theme(st)
+        st.sidebar.title("GreyModel")
+        st.sidebar.caption("Inspection workspace")
+        st.sidebar.write({"workspace": workspace.workspace_name, "active_profile": workspace.active_model_profile, "run_root": workspace.run_root, "data_root": workspace.data_root})
+        page = st.sidebar.radio("Page", PAGE_ORDER, index=0, key="gm_page")
+        if page == "Home":
+            _render_home(st, workspace, run_root, data_root)
+        elif page == "Datasets":
+            _render_datasets(st, workspace, data_root, workspace_path)
+        elif page == "Models":
+            _render_models(st, workspace, data_root, workspace_path)
+        elif page == "Train":
+            _render_train(st, repo_root=Path(__file__).resolve().parents[2], run_root=run_root, workspace=workspace, execution_defaults=execution_defaults, workspace_path=workspace_path)
+        elif page == "Runs":
+            _render_runs(st, run_root)
+        elif page == "Predict & Review":
+            _render_predict_review(st, repo_root=Path(__file__).resolve().parents[2], run_root=run_root, data_root=data_root, workspace=workspace, workspace_path=workspace_path)
+        elif page == "Explain":
+            _render_explain(st, run_root=run_root, data_root=data_root, workspace=workspace, workspace_path=workspace_path)
+        elif page == "Failures":
+            _render_failures(st, run_root)
+        else:
+            workspace, execution_defaults = _render_settings(st, workspace, execution_defaults, workspace_path)
+            _persist_workspace(workspace, workspace_path)
+    except Exception as exc:
+        try:
+            st.set_page_config(page_title="GreyModel", layout="wide", initial_sidebar_state="expanded")
+        except Exception:
+            pass
+        st.error("GreyModel UI failed during startup or page render.")
+        st.exception(exc)
 
 
 def main(argv: list[str] | None = None) -> None:

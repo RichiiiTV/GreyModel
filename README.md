@@ -191,6 +191,19 @@ python -m greymodel ui \
   --print-url
 ```
 
+If the page loads but the browser reports `/_stcore/stream` websocket failures behind a notebook or HPC proxy, rerun once with the proxy-compatible safety flags:
+
+```bash
+python -m greymodel ui \
+  --run-root artifacts \
+  --data-root data \
+  --proxy-mode jupyter_port \
+  --bind-port 8501 \
+  --disable-cors \
+  --disable-xsrf-protection \
+  --print-url
+```
+
 JupyterHub service-prefix routing:
 
 ```bash

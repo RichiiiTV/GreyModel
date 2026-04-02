@@ -21,6 +21,21 @@ python -m greymodel ui \
   --print-url
 ```
 
+If your browser can load the shell but reports websocket failures on `/_stcore/stream`, rerun with:
+
+```bash
+python -m greymodel ui \
+  --run-root artifacts \
+  --data-root data \
+  --proxy-mode jupyter_port \
+  --bind-port 8501 \
+  --disable-cors \
+  --disable-xsrf-protection \
+  --print-url
+```
+
+These flags are intentionally explicit. They are meant for notebook or HPC proxy environments where the proxy path or origin handling breaks Streamlit’s websocket negotiation.
+
 JupyterHub service-prefix routing:
 
 ```bash
